@@ -9,8 +9,8 @@
 // @match        https://bonk.io/gameframe-release.html
 // @run-at       document-end
 // @grant        none
-// @updateURL    https://raw.githubusercontent.com/elder-tubby/bonkio-parkour-generator/main/browser-script/pkrGenerator.js
-// @downloadURL  https://raw.githubusercontent.com/elder-tubby/bonkio-parkour-generator/main/browser-script/pkrGenerator.js
+// @updateURL    https://raw.githubusercontent.com/elder-tubby/bonkio-public-notes/main/pkrGenerator.user.js
+// @downloadURL  https://raw.githubusercontent.com/elder-tubby/bonkio-public-notes/main/pkrGenerator.user.js
 // ==/UserScript==
 
 
@@ -544,7 +544,7 @@ const addPkrDiv = () => {
 };
 
 async function fetchRandomMapAndAuthorNames() {
-    const url = `https://raw.githubusercontent.com/elder-tubby/bonkio-parkour-generator/main/browser-script/map-data/mapAndAuthorNames.json?t=${Math.random() * 1000000}`;
+    const url = `https://raw.githubusercontent.com/elder-tubby/bonkio-public-notes/main/map-data/mapAndAuthorNames.json?t=${Math.random() * 1000000}`;
 
     try {
         const response = await fetch(url);
