@@ -125,7 +125,7 @@
 						att_z: 0,
 						current_att: 1,
 						eliminated: false,
-						lastSpawnTime: Date.now() + 3000,
+						lastSpawnTime: Date.now() + 5000,
 						confirmedDeaths: 0, // Robust lag-proofing state tracker
 						deathTimer: 0
 					};
@@ -227,37 +227,33 @@
 		midControls.style.gap = "8px";
 		midControls.style.border = "1px solid rgba(255, 255, 255, 0.2)";
 
-		// Use Grid to prevent overlapping
-		midControls.innerHTML = `
-			<div style="display: grid; grid-template-columns: 115px 1fr 65px; align-items: center; width: 100%;">
-				<div style="display: flex; flex-direction: column; gap: 2px;">
-					<div style="display: flex; align-items: center; gap: 4px;">
-						<input type="checkbox" id="pkr_chat_alerts" style="cursor:pointer; margin: 0;" />
-						<label for="pkr_chat_alerts" style="font-size: 10px; cursor:pointer; white-space: nowrap;">Chat Alerts</label>
-					</div>
-					<div style="display: flex; align-items: center; gap: 4px;">
-						<input type="checkbox" id="pkr_auto_death" checked style="cursor:pointer; margin: 0;" />
-						<label for="pkr_auto_death" style="font-size: 10px; cursor:pointer; white-space: nowrap;">Log Deaths (Buggy)</label>
-					</div>
-					<div style="display: flex; align-items: center; gap: 4px;">
-						<input type="checkbox" id="pkr_auto_remove" checked style="cursor:pointer; margin: 0;" />
-						<label for="pkr_auto_remove" style="font-size: 10px; cursor:pointer; white-space: nowrap;">Kill on Time Up (Buggy)</label>
-					</div>
-				</div>
+		// Use Flexbox to stack Map Nav above Toggles
+    midControls.innerHTML = `
+        <div style="display: flex; justify-content: center; align-items: center; gap: 5px; margin-bottom: 8px;">
+            <div id="pkr_map_prev" style="cursor:pointer; font-size: 16px; font-weight:bold; padding: 0 5px;">&lt;</div>
+            <div id="pkr_map_full_text" class="bonkhud-text-color" style="font-weight: bold; font-size: 13px; text-align: center; min-width: 50px;">
+                Map <span id="pkr_map_label">1</span>
+            </div>
+            <div id="pkr_map_next" style="cursor:pointer; font-size: 16px; font-weight:bold; padding: 0 5px;">&gt;</div>
+        </div>
 
-				<div style="display: flex; justify-content: center; align-items: center; gap: 5px;">
-					<div id="pkr_map_prev" style="cursor:pointer; font-size: 16px; font-weight:bold; padding: 0 5px;">&lt;</div>
-					<div id="pkr_map_full_text" class="bonkhud-text-color" style="font-weight: bold; font-size: 13px; text-align: center; min-width: 50px;">
-						Map <span id="pkr_map_label">1</span>
-					</div>
-					<div id="pkr_map_next" style="cursor:pointer; font-size: 16px; font-weight:bold; padding: 0 5px;">&gt;</div>
-				</div>
+        <div style="display: flex; flex-direction: column; align-items: left; gap: 4px; width: 100%;">
+            <div style="display: flex; align-items: center; gap: 4px;">
+                <input type="checkbox" id="pkr_chat_alerts" style="cursor:pointer; margin: 0;" />
+                <label for="pkr_chat_alerts" style="font-size: 10px; cursor:pointer; white-space: nowrap;">Chat Alerts</label>
+            </div>
+            <div style="display: flex; align-items: center; gap: 4px;">
+                <input type="checkbox" id="pkr_auto_death" style="cursor:pointer; margin: 0;" />
+                <label for="pkr_auto_death" style="font-size: 10px; cursor:pointer; white-space: nowrap;">Log Deaths (Buggy)</label>
+            </div>
+            <div style="display: flex; align-items: center; gap: 4px;">
+                <input type="checkbox" id="pkr_auto_remove" style="cursor:pointer; margin: 0;" />
+                <label for="pkr_auto_remove" style="font-size: 10px; cursor:pointer; white-space: nowrap;">Kill on Time Up (Buggy)</label>
+            </div>
+        </div>
 
-				<div></div>
-			</div>
-
-			<div style="display: flex; justify-content: center; align-items: center; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px;">
-				<div style="display: flex; align-items: center; gap: 20px;">
+        <div style="display: flex; justify-content: center; align-items: center; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px; margin-top: 8px;">
+				<div style="display: flex; align-items: left; gap: 10px;">
 					<div id="pkr_timer_display" class="bonkhud-text-color" style="font-size: 16px; font-weight: bold; width: 50px; text-align: center; font-family: monospace;">04:00</div>
 					<div id="pkr_timer_btns" style="display: flex; gap: 8px;"></div>
 				</div>
