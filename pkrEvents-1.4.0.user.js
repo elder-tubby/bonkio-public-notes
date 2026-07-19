@@ -298,7 +298,7 @@
 		bottomControls.style.flexDirection = "column";
 		bottomControls.style.gap = "5px";
 
-		const elimBtn = bonkHUD.generateButton("Eliminate Players...");
+		const elimBtn = bonkHUD.generateButton("Remove Players...");
 		elimBtn.style.backgroundColor = "#ff8c00";
 		elimBtn.onclick = () => this.showKillOverlay();
 

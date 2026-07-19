@@ -1,0 +1,508 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Upload, Image as ImageIcon, Download, Settings2, Sparkles, Check, ChevronRight, Loader2 } from 'lucide-react';
+
+// --- WEB WORKER FOR HEAVY IMAGE PROCESSING ---
+// We use a Web Worker so the heavy K-Means calculations don't freeze the UI.
+function createWorker() {
+  const workerCode = function() {
+    self.onmessage = function(e) {
+      const { imageData, k, width, height, postProcess } = e.data;
+      const data = imageData.data;
+      const len = data.length;
+      const numPixels = len / 4;
+
+      // 1. Sample pixels for training (max 10,000 for performance)
+      const sampleSize = Math.min(10000, numPixels);
+      const samples = [];
+      for (let i = 0; i < sampleSize; i++) {
+        const idx = Math.floor(Math.random() * numPixels) * 4;
+        samples.push([data[idx], data[idx+1], data[idx+2]]);
+      }
+
+      // 2. Initialize Centers (K-Means++)
+      const centers = [samples[Math.floor(Math.random() * samples.length)]];
+      while (centers.length < k) {
+        let maxDist = -1;
+        let bestPoint = samples[0];
+        for (let i = 0; i < samples.length; i++) {
+          const p = samples[i];
+          let minDist = Infinity;
+          for (let j = 0; j < centers.length; j++) {
+            const c = centers[j];
+            const dr = p[0]-c[0], dg = p[1]-c[1], db = p[2]-c[2];
+            const dist = dr*dr + dg*dg + db*db;
+            if (dist < minDist) minDist = dist;
+          }
+          if (minDist > maxDist) {
+            maxDist = minDist;
+            bestPoint = p;
+          }
+        }
+        centers.push(bestPoint);
+      }
+
+      // 3. Lloyd's Algorithm (Refine Centers)
+      let changed = true;
+      let iterations = 0;
+      const maxIterations = 20;
+
+      while (changed && iterations < maxIterations) {
+        changed = false;
+        iterations++;
+        const newCenters = Array.from({length: k}, () => [0, 0, 0]);
+        const counts = Array.from({length: k}, () => 0);
+
+        for (let i = 0; i < samples.length; i++) {
+          const p = samples[i];
+          let minDist = Infinity;
+          let bestCenter = 0;
+          for (let j = 0; j < k; j++) {
+            const c = centers[j];
+            const dr = p[0]-c[0], dg = p[1]-c[1], db = p[2]-c[2];
+            const dist = dr*dr + dg*dg + db*db;
+            if (dist < minDist) {
+              minDist = dist;
+              bestCenter = j;
+            }
+          }
+          newCenters[bestCenter][0] += p[0];
+          newCenters[bestCenter][1] += p[1];
+          newCenters[bestCenter][2] += p[2];
+          counts[bestCenter]++;
+        }
+
+        for (let j = 0; j < k; j++) {
+          if (counts[j] > 0) {
+            const newR = newCenters[j][0] / counts[j];
+            const newG = newCenters[j][1] / counts[j];
+            const newB = newCenters[j][2] / counts[j];
+            if (Math.abs(newR - centers[j][0]) > 0.5 || Math.abs(newG - centers[j][1]) > 0.5 || Math.abs(newB - centers[j][2]) > 0.5) {
+              changed = true;
+            }
+            centers[j] = [newR, newG, newB];
+          }
+        }
+      }
+
+      // Format centers to integers
+      for (let j = 0; j < k; j++) {
+        centers[j] = [Math.round(centers[j][0]), Math.round(centers[j][1]), Math.round(centers[j][2])];
+      }
+
+      // 4. Apply to all pixels and store mapping
+      const indices = new Uint8Array(numPixels);
+      for (let i = 0; i < len; i += 4) {
+        const r = data[i];
+        const g = data[i+1];
+        const b = data[i+2];
+
+        let minDist = Infinity;
+        let bestCenterIdx = 0;
+
+        for (let j = 0; j < k; j++) {
+          const c = centers[j];
+          const dr = r-c[0], dg = g-c[1], db = b-c[2];
+          const dist = dr*dr + dg*dg + db*db;
+          if (dist < minDist) {
+            minDist = dist;
+            bestCenterIdx = j;
+          }
+        }
+        
+        indices[i/4] = bestCenterIdx;
+        data[i] = centers[bestCenterIdx][0];
+        data[i+1] = centers[bestCenterIdx][1];
+        data[i+2] = centers[bestCenterIdx][2];
+        data[i+3] = 255; 
+      }
+
+      // 5. Post-process: Mode Filter (Fills tiny gaps / Removes salt & pepper noise)
+      if (postProcess) {
+        const outData = new Uint8ClampedArray(len);
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const idx = y * width + x;
+            const outBase = idx * 4;
+
+            const counts = new Array(k).fill(0);
+            let maxCount = 0;
+            let modeIndex = indices[idx];
+
+            // 3x3 Window
+            for (let dy = -1; dy <= 1; dy++) {
+              for (let dx = -1; dx <= 1; dx++) {
+                const nx = x + dx;
+                const ny = y + dy;
+                if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                  const cIdx = indices[ny * width + nx];
+                  counts[cIdx]++;
+                  if (counts[cIdx] > maxCount) {
+                    maxCount = counts[cIdx];
+                    modeIndex = cIdx;
+                  }
+                }
+              }
+            }
+
+            outData[outBase] = centers[modeIndex][0];
+            outData[outBase+1] = centers[modeIndex][1];
+            outData[outBase+2] = centers[modeIndex][2];
+            outData[outBase+3] = 255;
+          }
+        }
+        
+        // Copy back
+        for (let i=0; i<len; i++) data[i] = outData[i];
+      }
+
+      self.postMessage({ imageData, centers });
+    };
+  };
+
+  const blob = new Blob([`(${workerCode.toString()})()`], { type: 'application/javascript' });
+  return new Worker(URL.createObjectURL(blob));
+}
+
+// --- MAIN REACT COMPONENT ---
+export default function App() {
+  const [sourceImage, setSourceImage] = useState(null);
+  const [resultImage, setResultImage] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [palette, setPalette] = useState([]);
+  
+  // Settings
+  const [kColors, setKColors] = useState(2);
+  const [fillGaps, setFillGaps] = useState(true);
+  const [gapIntensity, setGapIntensity] = useState(2);
+
+  const workerRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    // Initialize Web Worker
+    workerRef.current = createWorker();
+    
+    workerRef.current.onmessage = (e) => {
+      const { imageData, centers } = e.data;
+      
+      // Convert processed ImageData back to URL
+      const canvas = document.createElement('canvas');
+      canvas.width = imageData.width;
+      canvas.height = imageData.height;
+      const ctx = canvas.getContext('2d');
+      ctx.putImageData(imageData, 0, 0);
+      
+      setResultImage(canvas.toDataURL('image/png'));
+      setPalette(centers);
+      setIsProcessing(false);
+    };
+
+    return () => {
+      if (workerRef.current) workerRef.current.terminate();
+    };
+  }, []);
+
+  // Handle global Paste events
+  useEffect(() => {
+    const handlePaste = (e) => {
+      const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.indexOf('image') !== -1) {
+          const file = item.getAsFile();
+          if (!file) continue;
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            setSourceImage(event.target.result);
+            setResultImage(null);
+            setPalette([]);
+          };
+          reader.readAsDataURL(file);
+          break; // Stop after processing the first pasted image
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, []);
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setSourceImage(event.target.result);
+      setResultImage(null);
+      setPalette([]);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const processImage = () => {
+    if (!sourceImage || !workerRef.current) return;
+    
+    setIsProcessing(true);
+
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      
+      // Limit processing size to max 1200px to maintain performance
+      const MAX_SIZE = 1200;
+      let width = img.width;
+      let height = img.height;
+      if (width > MAX_SIZE || height > MAX_SIZE) {
+        const ratio = Math.min(MAX_SIZE / width, MAX_SIZE / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      // PRE-PROCESSING: If fillGaps is on, we apply a blur BEFORE clustering.
+      // This causes separated dotted lines to merge into continuous (but lighter) lines.
+      // K-Means will then quantize these lighter connected lines back into a solid distinct color!
+      if (fillGaps && gapIntensity > 0) {
+        ctx.filter = `blur(${gapIntensity}px)`;
+      }
+      
+      ctx.drawImage(img, 0, 0, width, height);
+      
+      // Get pixels
+      const imageData = ctx.getImageData(0, 0, width, height);
+      
+      // Send to worker
+      workerRef.current.postMessage({ 
+        imageData, 
+        k: kColors, 
+        width, 
+        height,
+        postProcess: fillGaps // Triggers Mode Filter cleanup in worker
+      });
+    };
+    img.src = sourceImage;
+  };
+
+  const rgbToHex = (r, g, b) => '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-gray-100 font-sans p-6">
+      <div className="max-w-6xl mx-auto space-y-8">
+        
+        {/* Header */}
+        <header className="flex items-center gap-3 border-b border-gray-800 pb-6">
+          <div className="p-3 bg-blue-600/20 rounded-xl">
+            <Sparkles className="w-8 h-8 text-blue-400" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+              Smart Image Quantizer
+            </h1>
+            <p className="text-gray-400 text-sm mt-1">
+              Reduce images to distinct mono colors and fix broken lines automatically.
+            </p>
+          </div>
+        </header>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* Left Panel: Settings */}
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-8 h-fit shadow-xl">
+            <div className="flex items-center gap-2 mb-2">
+              <Settings2 className="w-5 h-5 text-gray-400" />
+              <h2 className="text-lg font-semibold">Algorithm Settings</h2>
+            </div>
+
+            {/* K-Colors Slider */}
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <label className="text-sm font-medium text-gray-300">Target Colors (K)</label>
+                <span className="bg-gray-800 px-3 py-1 rounded-full text-sm font-bold text-blue-400">
+                  {kColors} Mono {kColors === 1 ? 'Color' : 'Colors'}
+                </span>
+              </div>
+              <input 
+                type="range" min="2" max="16" value={kColors} 
+                onChange={(e) => setKColors(parseInt(e.target.value))}
+                className="w-full accent-blue-500 h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer"
+              />
+              <p className="text-xs text-gray-500">
+                Number of distinct, average shades the image will be restricted to. Set to 2 for pure foreground/background.
+              </p>
+            </div>
+
+            {/* Gap Fill Toggle */}
+            <div className="space-y-4 pt-4 border-t border-gray-800">
+              <label className="flex items-start gap-3 cursor-pointer group">
+                <div className="relative flex items-center justify-center mt-0.5">
+                  <input 
+                    type="checkbox" 
+                    checked={fillGaps}
+                    onChange={(e) => setFillGaps(e.target.checked)}
+                    className="appearance-none w-5 h-5 border-2 border-gray-600 rounded bg-gray-900 checked:bg-blue-500 checked:border-blue-500 transition-colors"
+                  />
+                  {fillGaps && <Check className="w-3.5 h-3.5 text-white absolute pointer-events-none" />}
+                </div>
+                <div>
+                  <span className="text-sm font-medium text-gray-300 group-hover:text-white transition-colors">
+                    Fill miniscule empty spaces
+                  </span>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Connects broken dots in foreground lines and removes background noise.
+                  </p>
+                </div>
+              </label>
+
+              {/* Gap Fill Intensity (Only visible if enabled) */}
+              {fillGaps && (
+                <div className="pl-8 pt-2 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-medium text-gray-400">Connection Radius</label>
+                    <span className="text-xs text-gray-500">{gapIntensity}px</span>
+                  </div>
+                  <input 
+                    type="range" min="1" max="5" value={gapIntensity} 
+                    onChange={(e) => setGapIntensity(parseInt(e.target.value))}
+                    className="w-full accent-purple-500 h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Action Button */}
+            <button
+              onClick={processImage}
+              disabled={!sourceImage || isProcessing}
+              className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white py-3.5 rounded-xl font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-900/20 hover:shadow-blue-900/40"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" /> Processing...
+                </>
+              ) : (
+                <>
+                  Generate Exact Mono Image <ChevronRight className="w-5 h-5" />
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Right Panel: Workspace */}
+          <div className="lg:col-span-2 space-y-6">
+            
+            {/* Upload Area */}
+            {!sourceImage && (
+              <div 
+                onClick={() => fileInputRef.current?.click()}
+                className="border-2 border-dashed border-gray-700 hover:border-blue-500 bg-gray-900/50 hover:bg-gray-800/50 transition-all rounded-3xl h-96 flex flex-col items-center justify-center cursor-pointer group"
+              >
+                <div className="bg-gray-800 group-hover:bg-blue-600/20 p-4 rounded-full mb-4 transition-colors">
+                  <Upload className="w-8 h-8 text-gray-400 group-hover:text-blue-400" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-300 mb-2">Upload your image</h3>
+                <p className="text-gray-500 text-sm max-w-sm text-center">
+                  Drag and drop, click to browse, or <strong className="text-gray-300">Ctrl+V / Cmd+V</strong> to paste. Works best with document scans, noisy line art, or patterns.
+                </p>
+                <input 
+                  type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" 
+                />
+              </div>
+            )}
+
+            {/* Comparison Area */}
+            {sourceImage && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Original */}
+                <div className="bg-gray-900 border border-gray-800 p-4 rounded-2xl shadow-lg flex flex-col">
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="text-sm font-medium text-gray-400 flex items-center gap-2">
+                      <ImageIcon className="w-4 h-4" /> Original Source
+                    </span>
+                    <button 
+                      onClick={() => { setSourceImage(null); setResultImage(null); setPalette([]); }}
+                      className="text-xs text-red-400 hover:text-red-300"
+                    >
+                      Clear Image
+                    </button>
+                  </div>
+                  <div className="flex-1 bg-black rounded-xl overflow-hidden flex items-center justify-center relative group min-h-[300px]">
+                    <img src={sourceImage} alt="Original" className="max-w-full max-h-[500px] object-contain" />
+                  </div>
+                </div>
+
+                {/* Result */}
+                <div className="bg-gray-900 border border-gray-800 p-4 rounded-2xl shadow-lg flex flex-col relative overflow-hidden">
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="text-sm font-medium text-blue-400 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4" /> Quantized Output
+                    </span>
+                    {resultImage && (
+                      <a 
+                        href={resultImage} download="quantized_mono.png"
+                        className="text-xs bg-blue-600/20 text-blue-400 px-3 py-1.5 rounded-lg hover:bg-blue-600/40 transition-colors flex items-center gap-1.5 font-medium"
+                      >
+                        <Download className="w-3.5 h-3.5" /> Download
+                      </a>
+                    )}
+                  </div>
+
+                  <div className="flex-1 bg-black rounded-xl overflow-hidden flex items-center justify-center relative min-h-[300px]">
+                    {resultImage ? (
+                      <img src={resultImage} alt="Processed" className="max-w-full max-h-[500px] object-contain" />
+                    ) : (
+                      <div className="text-center p-6">
+                        {isProcessing ? (
+                          <div className="flex flex-col items-center text-blue-400 gap-3">
+                            <Loader2 className="w-10 h-10 animate-spin" />
+                            <span className="text-sm font-medium">Clustering pixels...</span>
+                          </div>
+                        ) : (
+                          <div className="text-gray-600 text-sm">
+                            Click Generate to process image
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Palette Extraction display */}
+            {palette.length > 0 && (
+              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-xl animate-in fade-in slide-in-from-bottom-4">
+                <h3 className="text-sm font-medium text-gray-400 mb-4 uppercase tracking-wider">
+                  Extracted Mono Palette ({palette.length} Colors)
+                </h3>
+                <div className="flex flex-wrap gap-4">
+                  {palette.map((color, idx) => {
+                    const hex = rgbToHex(color[0], color[1], color[2]);
+                    return (
+                      <div key={idx} className="flex items-center gap-3 bg-gray-800 rounded-xl p-2 pr-4 border border-gray-700">
+                        <div 
+                          className="w-10 h-10 rounded-lg shadow-inner border border-gray-600"
+                          style={{ backgroundColor: `rgb(${color[0]}, ${color[1]}, ${color[2]})` }}
+                        />
+                        <div className="flex flex-col">
+                          <span className="text-xs font-mono text-gray-300">{hex}</span>
+                          <span className="text-[10px] text-gray-500">
+                            RGB({color[0]}, {color[1]}, {color[2]})
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

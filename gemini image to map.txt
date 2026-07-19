@@ -1,0 +1,1110 @@
+import React, { useState, useRef, useEffect } from 'react'; 
+import { Upload, Crosshair, Settings, Copy, Check, Trash2, Image as ImageIcon, Sparkles, Eye, EyeOff, AlertCircle } from 'lucide-react';
+
+// --- COMPUTATIONAL GEOMETRY & MATH FUNCTIONS (MERGED) ---
+
+const distance = (p1, p2) => Math.hypot(p2.x - p1.x, p2.y - p1.y);
+const ptDistSq = (p1, p2) => (p1.x - p2.x)*(p1.x - p2.x) + (p1.y - p2.y)*(p1.y - p2.y);
+
+function distToSegment(p, v, w) {
+    const l2 = ptDistSq(v, w);
+    if (l2 === 0) return distance(p, v);
+    let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+    t = Math.max(0, Math.min(1, t));
+    return distance(p, { x: v.x + t * (w.x - v.x), y: v.y + t * (w.y - v.y) });
+}
+
+function rdpSimplify(points, epsilon) {
+    if (points.length <= 2) return points;
+    let dmax = 0, index = 0;
+    const end = points.length - 1;
+    for (let i = 1; i < end; i++) {
+        const d = distToSegment(points[i], points[0], points[end]);
+        if (d > dmax) { index = i; dmax = d; }
+    }
+    if (dmax > epsilon) {
+        const recResults1 = rdpSimplify(points.slice(0, index + 1), epsilon);
+        const recResults2 = rdpSimplify(points.slice(index), epsilon);
+        return recResults1.slice(0, recResults1.length - 1).concat(recResults2);
+    } else return [points[0], points[end]];
+}
+
+function simplify(verts, epsilon = 0.5) {
+    if (verts.length <= 3) return verts;
+    let clean = [];
+    for (let i = 0; i < verts.length; i++) {
+        let prev = verts[(i - 1 + verts.length) % verts.length], curr = verts[i], next = verts[(i + 1) % verts.length];
+        let area = Math.abs((prev.x*(curr.y - next.y) + curr.x*(next.y - prev.y) + next.x*(prev.y - curr.y))/2);
+        if (area > epsilon) clean.push(curr);
+    }
+    return clean.length >= 3 ? clean : verts;
+}
+
+function getSignedArea(verts) {
+    let area = 0;
+    for (let i = 0; i < verts.length; i++) {
+        let j = (i + 1) % verts.length;
+        area += (verts[i].x * verts[j].y) - (verts[j].x * verts[i].y);
+    }
+    return area / 2;
+}
+
+function forceCW(verts) {
+    if (verts.length < 3) return verts;
+    let area = getSignedArea(verts);
+    if (area < 0) return [...verts].reverse(); 
+    return verts;
+}
+
+function forceCCW(verts) {
+    if (verts.length < 3) return verts;
+    let area = getSignedArea(verts);
+    if (area > 0) return [...verts].reverse(); 
+    return verts;
+}
+
+function pointInTriangle(p, a, b, c) {
+    let as_x = p.x - a.x, as_y = p.y - a.y;
+    let s_ab = (b.x - a.x) * as_y - (b.y - a.y) * as_x > 0;
+    if (((c.x - a.x) * as_y - (c.y - a.y) * as_x > 0) == s_ab) return false;
+    if (((c.x - b.x) * (p.y - b.y) - (c.y - b.y) * (p.x - b.x) > 0) != s_ab) return false;
+    return true;
+}
+
+function cleanCollinear(verts) {
+    if (verts.length <= 3) return verts;
+    let clean = [];
+    for (let i = 0; i < verts.length; i++) {
+        let prev = verts[(i - 1 + verts.length) % verts.length];
+        let curr = verts[i];
+        let next = verts[(i + 1) % verts.length];
+        
+        let dx1 = curr.x - prev.x, dy1 = curr.y - prev.y;
+        let dx2 = next.x - curr.x, dy2 = next.y - curr.y;
+        
+        let cross = dx1 * dy2 - dy1 * dx2;
+        let dot = dx1 * dx2 + dy1 * dy2;
+        
+        // Keep the point if it forms a corner OR if it's a tight U-turn (bridge logic)
+        if (Math.abs(cross) > 0.05 || dot < 0) { 
+            clean.push(curr);
+        }
+    }
+    return clean.length >= 3 ? clean : verts;
+}
+
+function isStrictlyConvex(verts) {
+    if (verts.length < 3) return false;
+    let sign = 0;
+    for (let i = 0; i < verts.length; i++) {
+        let p0 = verts[i]; 
+        let p1 = verts[(i + 1) % verts.length]; 
+        let p2 = verts[(i + 2) % verts.length];
+        
+        let dx1 = p1.x - p0.x, dy1 = p1.y - p0.y;
+        let dx2 = p2.x - p1.x, dy2 = p2.y - p1.y;
+        let cross = dx1 * dy2 - dy1 * dx2;
+        
+        // Ensure bridged/U-turn lines don't get falsely flagged as convex 
+        if (Math.abs(cross) < 0.05) {
+            let dot = dx1 * dx2 + dy1 * dy2;
+            if (dot < 0) return false; 
+            continue; 
+        }
+        
+        if (sign === 0) {
+            sign = cross > 0 ? 1 : -1;
+        } else if ((cross > 0 ? 1 : -1) !== sign) {
+            return false; 
+        }
+    }
+    return sign !== 0; 
+}
+
+function intersectRayRightWithSegment(hx, hy, a, b) {
+    if ((a.y < hy && b.y < hy) || (a.y > hy && b.y > hy)) return null;
+    const dy = b.y - a.y;
+    if (Math.abs(dy) < 1e-9) return null;
+    const t = (hy - a.y) / dy;
+    if (t < 0 || t >= 1) return null; 
+    const ix = a.x + t * (b.x - a.x);
+    if (ix <= hx + 1e-9) return null;
+    return ix;
+}
+
+// Stitches an internal hole (black space) to the outer frame boundary
+function stitchHoleIntoOuter(outer, hole) {
+    let hi = 0;
+    for (let i = 1; i < hole.length; i++) {
+        if (hole[i].x > hole[hi].x || (Math.abs(hole[i].x - hole[hi].x) < 1e-9 && hole[i].y < hole[hi].y)) {
+            hi = i;
+        }
+    }
+    const hv = hole[hi];
+
+    let best = null;
+    for (let j = 0; j < outer.length; j++) {
+        const a = outer[j];
+        const b = outer[(j + 1) % outer.length];
+        const ix = intersectRayRightWithSegment(hv.x, hv.y, a, b);
+        if (ix !== null) {
+            const dx = b.x - a.x, dy = b.y - a.y;
+            const t = Math.abs(dx) > Math.abs(dy) ? (ix - a.x) / (dx || 1) : (hv.y - a.y) / (dy || 1);
+            const dist = ix - hv.x;
+            if (dist > 0 && (!best || dist < best.dist)) {
+                best = { edgeIndex: j, px: a.x + t * dx, py: a.y + t * dy, dist };
+            }
+        }
+    }
+
+    if (!best) {
+        let nearestIdx = 0, bestD = Infinity;
+        for (let j = 0; j < outer.length; j++) {
+            const d = ptDistSq(outer[j], hv);
+            if (d < bestD) { bestD = d; nearestIdx = j; }
+        }
+        best = { edgeIndex: nearestIdx, px: outer[nearestIdx].x, py: outer[nearestIdx].y, dist: Math.sqrt(bestD) };
+    }
+
+    const j = best.edgeIndex;
+    const interPt = { x: best.px, y: best.py };
+    
+    const newOuter = [];
+    for (let k = 0; k <= j; k++) newOuter.push(outer[k]);
+    newOuter.push(interPt);
+    for (let k = j + 1; k < outer.length; k++) newOuter.push(outer[k]);
+
+    const outerInsertIdx = j + 1;
+    const prefix = newOuter.slice(0, outerInsertIdx + 1); 
+    const suffix = newOuter.slice(outerInsertIdx); 
+    
+    const holeTraversal = [];
+    for(let k = 0; k <= hole.length; k++) {
+        holeTraversal.push(hole[(hi + k) % hole.length]);
+    }
+    
+    return prefix.concat(holeTraversal, suffix);
+}
+
+function triangulate(verts) {
+    let vCpy = forceCW([...verts]); 
+    let triangles = []; 
+    let limit = vCpy.length * 3; 
+    
+    while (vCpy.length >= 3 && limit-- > 0) {
+        let n = vCpy.length; let earFound = false;
+        for (let i = 0; i < n; i++) {
+            let prev = vCpy[(i - 1 + n) % n], curr = vCpy[i], next = vCpy[(i + 1) % n];
+            let cross = (curr.x - prev.x) * (next.y - curr.y) - (curr.y - prev.y) * (next.x - curr.x);
+            if (cross > 0.001) { 
+                let isEar = true;
+                for (let j = 0; j < n; j++) {
+                    if (j === (i - 1 + n) % n || j === i || j === (i + 1) % n) continue;
+                    if (pointInTriangle(vCpy[j], prev, curr, next)) { isEar = false; break; }
+                }
+                if (isEar) {
+                    triangles.push(forceCW([prev, curr, next]));
+                    vCpy.splice(i, 1); earFound = true; break;
+                }
+            }
+        }
+        if (!earFound && vCpy.length > 3) {
+            triangles.push(forceCW([vCpy[0], vCpy[1], vCpy[2]]));
+            vCpy.splice(1, 1);
+        }
+    }
+    if (vCpy.length === 3) triangles.push(forceCW(vCpy));
+    return triangles;
+}
+
+function optimizeToMinimumConvex(triangles) {
+    let pieces = triangles.map(t => ({ verts: forceCW(t) }));
+    let changed = true;
+    
+    while(changed) {
+        changed = false;
+        for(let i=0; i<pieces.length; i++) {
+            for(let j=i+1; j<pieces.length; j++) {
+                let mergedVerts = null; 
+                let pA = pieces[i].verts, pB = pieces[j].verts;
+                
+                for (let a = 0; a < pA.length; a++) {
+                    let a1 = pA[a], a2 = pA[(a + 1) % pA.length];
+                    for (let b = 0; b < pB.length; b++) {
+                        let b1 = pB[b], b2 = pB[(b + 1) % pB.length];
+                        
+                        // Check for strictly shared reverse edge
+                        if (ptDistSq(a1, b2) < 0.1 && ptDistSq(a2, b1) < 0.1) {
+                            let stitched = [];
+                            
+                            let currA = (a + 1) % pA.length;
+                            while (currA !== a) { stitched.push(pA[currA]); currA = (currA + 1) % pA.length; }
+                            stitched.push(pA[a]); 
+                            
+                            let currB = (b + 1) % pB.length;
+                            while (currB !== b) {
+                                if (currB !== (b + 1) % pB.length) stitched.push(pB[currB]);
+                                currB = (currB + 1) % pB.length;
+                            }
+                            
+                            let cleaned = cleanCollinear(stitched);
+                            
+                            if (cleaned.length <= 25 && isStrictlyConvex(cleaned)) {
+                                mergedVerts = cleaned;
+                            }
+                        }
+                    }
+                }
+                if (mergedVerts) {
+                    pieces.splice(j, 1); 
+                    pieces[i].verts = mergedVerts; 
+                    changed = true; 
+                    break;
+                }
+            }
+            if(changed) break; 
+        }
+    }
+    return pieces.map(p => forceCW(p.verts));
+}
+
+// --- NEW INTELLIGENT AGGRESSIVE MERGE LOGIC ---
+function getBounds(verts) {
+    let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity;
+    for(let v of verts) {
+        if(v.x < minX) minX = v.x; if(v.x > maxX) maxX = v.x;
+        if(v.y < minY) minY = v.y; if(v.y > maxY) maxY = v.y;
+    }
+    return { minX, maxX, minY, maxY };
+}
+
+function doBoundsIntersect(b1, b2, buffer = 0) {
+    return !(b1.maxX < b2.minX - buffer || b1.minX > b2.maxX + buffer ||
+             b1.maxY < b2.minY - buffer || b1.minY > b2.maxY + buffer);
+}
+
+function getPerimeter(verts) {
+    let p = 0;
+    for (let i = 0; i < verts.length; i++) {
+        p += distance(verts[i], verts[(i+1)%verts.length]);
+    }
+    return p;
+}
+
+// Standard Monotone Chain Convex Hull algorithm
+function convexHull(points) {
+    if(points.length <= 3) return points;
+    const pts = [...points].sort((a, b) => Math.abs(a.x - b.x) < 0.001 ? a.y - b.y : a.x - b.x);
+    const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+    const lower = [];
+    for (let p of pts) {
+        while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+        lower.push(p);
+    }
+    const upper = [];
+    for (let i = pts.length - 1; i >= 0; i--) {
+        let p = pts[i];
+        while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+        upper.push(p);
+    }
+    upper.pop(); lower.pop();
+    return lower.concat(upper);
+}
+
+// Smart heuristic that identifies slightly misaligned or rasterized adjoining chunks and perfectly envelopes them.
+function aggressiveMerge(polys) {
+    let pieces = polys.map(verts => ({
+        verts: forceCW(verts),
+        area: Math.abs(getSignedArea(verts)),
+        perimeter: getPerimeter(verts),
+        bounds: getBounds(verts)
+    }));
+
+    let changed = true;
+    let iter = 0;
+    while(changed && iter < 1000) {
+        changed = false;
+        iter++;
+        for(let i=0; i<pieces.length; i++) {
+            for(let j=i+1; j<pieces.length; j++) {
+                let pA = pieces[i], pB = pieces[j];
+
+                // Ensure they are close enough to be worth considering (saving expensive hull math)
+                if (!doBoundsIntersect(pA.bounds, pB.bounds, 2.0)) continue;
+
+                let combined = pA.verts.concat(pB.verts);
+                let hullVerts = convexHull(combined);
+                let hullArea = Math.abs(getSignedArea(hullVerts));
+
+                // Allowed Extra Tolerance: If enveloping two blocks results in an area roughly equal to their sum, 
+                // it implies they perfectly fit together without swallowing large empty space (like the center of an L-shape)
+                let allowedExtra = Math.min(pA.perimeter, pB.perimeter) * 1.5;
+
+                if (hullArea <= pA.area + pB.area + allowedExtra) {
+                    let cleaned = cleanCollinear(hullVerts);
+                    // Stay within Physics Engine limits
+                    if (cleaned.length >= 3 && cleaned.length <= 25 && isStrictlyConvex(cleaned)) {
+                        pieces.splice(j, 1);
+                        pieces.splice(i, 1);
+                        pieces.push({
+                            verts: forceCW(cleaned),
+                            area: hullArea,
+                            perimeter: getPerimeter(cleaned),
+                            bounds: getBounds(cleaned)
+                        });
+                        changed = true;
+                        break;
+                    }
+                }
+            }
+            if (changed) break;
+        }
+    }
+    return pieces.map(p => p.verts);
+}
+
+function generateGameObjects(imgData, w, h, colors, colorTolerance, outputLimit) {
+    let allGameObjects = [];
+    let nextId = 1;
+    const mapOffsetX = 935;
+    const mapOffsetY = 350;
+    const tol = Number(colorTolerance);
+
+    const MAX_WIDTH = 730;
+    const MAX_HEIGHT = 500;
+    let scaleRatio = 1;
+    if (w > MAX_WIDTH || h > MAX_HEIGHT) {
+        scaleRatio = Math.min(MAX_WIDTH / w, MAX_HEIGHT / h);
+    }
+
+    colors.forEach((colorObj) => {
+        const grid = new Uint8Array(w * h);
+        for (let i = 0; i < imgData.length; i += 4) {
+            if (imgData[i+3] < 50) continue;
+            const r = imgData[i], g = imgData[i+1], b = imgData[i+2];
+            const dist = Math.sqrt((r-colorObj.r)**2 + (g-colorObj.g)**2 + (b-colorObj.b)**2);
+            if (dist <= tol) grid[i / 4] = 1;
+        }
+
+        const visited = new Uint8Array(w * h);
+        let components = [];
+        
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                const startIdx = y * w + x;
+                if (grid[startIdx] === 1 && visited[startIdx] === 0) {
+                    const compPixels = [];
+                    const q = [startIdx];
+                    visited[startIdx] = 1;
+                    
+                    let sumR = 0, sumG = 0, sumB = 0;
+
+                    while (q.length > 0) {
+                        const idx = q.pop();
+                        const cy = Math.floor(idx / w);
+                        const cx = idx % w;
+                        compPixels.push({x: cx, y: cy});
+
+                        const pIdx = idx * 4;
+                        sumR += imgData[pIdx]; sumG += imgData[pIdx+1]; sumB += imgData[pIdx+2];
+
+                        const neighbors = [
+                            {x: cx+1, y: cy}, {x: cx-1, y: cy},
+                            {x: cx, y: cy+1}, {x: cx, y: cy-1}
+                        ];
+                        for (let n of neighbors) {
+                            if (n.x >= 0 && n.x < w && n.y >= 0 && n.y < h) {
+                                const nIdx = n.y * w + n.x;
+                                if (grid[nIdx] === 1 && visited[nIdx] === 0) {
+                                    visited[nIdx] = 1;
+                                    q.push(nIdx);
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (compPixels.length > 30) {
+                        components.push({
+                            pixels: compPixels,
+                            shade: {
+                                r: Math.round(sumR / compPixels.length),
+                                g: Math.round(sumG / compPixels.length),
+                                b: Math.round(sumB / compPixels.length)
+                            }
+                        });
+                    }
+                }
+            }
+        }
+
+        for (let comp of components) {
+            const cGrid = new Uint8Array(w * h);
+            for (let p of comp.pixels) cGrid[p.y * w + p.x] = 1;
+
+            const edges = new Map();
+            const addEdge = (x1, y1, x2, y2) => {
+                const key = `${x1},${y1}`;
+                if (!edges.has(key)) edges.set(key, []);
+                edges.get(key).push({ x: x2, y: y2 });
+            };
+            const getCGrid = (x, y) => (x < 0 || x >= w || y < 0 || y >= h) ? 0 : cGrid[y * w + x];
+
+            for (let p of comp.pixels) {
+                let x = p.x, y = p.y;
+                if (getCGrid(x, y-1) === 0) addEdge(x, y, x+1, y);
+                if (getCGrid(x, y+1) === 0) addEdge(x+1, y+1, x, y+1);
+                if (getCGrid(x-1, y) === 0) addEdge(x, y+1, x, y);
+                if (getCGrid(x+1, y) === 0) addEdge(x+1, y, x+1, y+1);
+            }
+
+            let loops = [];
+            while (edges.size > 0) {
+                const startKey = edges.keys().next().value;
+                let currentKey = startKey;
+                const loop = [];
+                while (true) {
+                    const arr = edges.get(currentKey);
+                    if (!arr || arr.length === 0) { edges.delete(currentKey); break; }
+                    const nextPt = arr.pop();
+                    if (arr.length === 0) edges.delete(currentKey);
+                    const [cx, cy] = currentKey.split(',').map(Number);
+                    loop.push({ x: cx, y: cy });
+                    currentKey = `${nextPt.x},${nextPt.y}`;
+                    if (currentKey === startKey) break;
+                }
+                if (loop.length > 4) loops.push(loop);
+            }
+
+            if (loops.length === 0) continue;
+
+            loops.sort((a,b) => Math.abs(getSignedArea(b)) - Math.abs(getSignedArea(a)));
+            
+            // Extract and clean Outer loop
+            let outerLoop = forceCW(simplify(rdpSimplify(loops[0], 2.5), 1.0));
+            if (outerLoop.length < 3) continue;
+
+            // Extract, clean, and properly orient Holes
+            let holes = [];
+            for (let i = 1; i < loops.length; i++) {
+                let hL = simplify(rdpSimplify(loops[i], 2.5), 1.0);
+                if (hL.length >= 3) holes.push(forceCCW(hL));
+            }
+
+            // Stitched hole geometry logic
+            holes.forEach(h => {
+                let maxX = -Infinity;
+                h.forEach(p => { if (p.x > maxX) maxX = p.x; });
+                h._maxX = maxX;
+            });
+            holes.sort((a, b) => b._maxX - a._maxX);
+
+            let cwPath = outerLoop;
+            for (let hole of holes) {
+                cwPath = stitchHoleIntoOuter(cwPath, hole);
+            }
+
+            let convexPolys = [];
+            
+            // Bypass triangulation if shape is naturally convex and has no holes
+            if (holes.length === 0 && isStrictlyConvex(cwPath) && cwPath.length <= 25) {
+                convexPolys.push(cwPath);
+            } else {
+                let triangles = triangulate(cwPath);
+                let exactMerged = optimizeToMinimumConvex(triangles);
+                // Employ smart heuristic to envelop misaligned/rasterized adjacent slices
+                convexPolys = aggressiveMerge(exactMerged);
+            }
+
+            const s = comp.shade;
+            const shadeColorInt = (s.r << 16) | (s.g << 8) | s.b;
+            const shadeColorStr = `rgb(${s.r},${s.g},${s.b})`;
+
+            for (let cPoly of convexPolys) {
+                let cx = 0, cy = 0;
+                for (let v of cPoly) { cx += v.x; cy += v.y; }
+                cx /= cPoly.length; cy /= cPoly.length;
+
+                const gameX = (cx * scaleRatio) - (w * scaleRatio) / 2 + mapOffsetX;
+                const gameY = (cy * scaleRatio) - (h * scaleRatio) / 2 + mapOffsetY;
+
+                const relativeVerts = cPoly.map(v => ({
+                    x: Number(((v.x - cx) * scaleRatio).toFixed(3)),
+                    y: Number(((v.y - cy) * scaleRatio).toFixed(3))
+                }));
+
+                const t = colorObj.type;
+                allGameObjects.push({
+                    id: nextId++,
+                    color: shadeColorInt,
+                    x: Number(gameX.toFixed(3)),
+                    y: Number(gameY.toFixed(3)),
+                    angle: 0,
+                    isBouncy: t === 'bouncy',
+                    isDeath: t === 'death',
+                    isCapzone: false,
+                    isNoJump: false,
+                    noPhysics: t === 'nonphysics',
+                    noGrapple: true,
+                    isBgLine: t === 'nonphysics',
+                    type: "poly",
+                    scale: 1,
+                    vertices: relativeVerts,
+                    _area: Math.abs(getSignedArea(cPoly)),
+                    _colorStr: shadeColorStr,
+                    _originalPoly: cPoly
+                });
+            }
+        }
+    });
+
+    const limit = Number(outputLimit) || 500;
+    allGameObjects.sort((a, b) => b._area - a._area);
+    if (allGameObjects.length > limit) {
+        allGameObjects = allGameObjects.slice(0, limit);
+    }
+
+    const physicsObjects = allGameObjects.filter(o => !o.noPhysics);
+    const nonPhysicsObjects = allGameObjects.filter(o => o.noPhysics);
+
+    nonPhysicsObjects.sort((a, b) => b._area - a._area);
+    physicsObjects.sort((a, b) => {
+        const yDiff = b.y - a.y;
+        if (Math.abs(yDiff) > 15) return yDiff;
+        return b.x - a.x; 
+    });
+
+    allGameObjects = [...nonPhysicsObjects, ...physicsObjects];
+    allGameObjects.forEach((obj, idx) => obj.id = idx);
+
+    return {
+        version: 1,
+        spawn: { spawnX: 226, spawnY: 193 },
+        mapSize: 9,
+        objects: allGameObjects
+    };
+}
+
+
+// --- MAIN UI COMPONENT ---
+
+export default function App() {
+    const [imageSrc, setImageSrc] = useState(null);
+    const [colors, setColors] = useState([]);
+    const [colorTolerance, setColorTolerance] = useState(40);
+    const [outputLimit, setOutputLimit] = useState("150");
+    const [activeColorId, setActiveColorId] = useState(null);
+    const [showUnmapped, setShowUnmapped] = useState(false);
+    const [notification, setNotification] = useState(null);
+    const [pendingRemoveColorId, setPendingRemoveColorId] = useState(null);
+    
+    const [mapJson, setMapJson] = useState('');
+    const [previewPolys, setPreviewPolys] = useState([]);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [copied, setCopied] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
+    const [imageLoaded, setImageLoaded] = useState(false);
+
+    const canvasRef = useRef(null);
+    const previewCanvasRef = useRef(null);
+    const originalImageDataRef = useRef(null);
+
+    const showToast = (msg) => {
+        setNotification(msg);
+        setTimeout(() => setNotification(null), 4000);
+    };
+
+    useEffect(() => {
+        const handlePaste = (e) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    const blob = items[i].getAsFile();
+                    const reader = new FileReader();
+                    reader.onload = (event) => setImageSrc(event.target.result);
+                    reader.readAsDataURL(blob);
+                    e.preventDefault();
+                    break;
+                }
+            }
+        };
+        window.addEventListener('paste', handlePaste);
+        return () => window.removeEventListener('paste', handlePaste);
+    }, []);
+
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Enter' && pendingRemoveColorId) {
+                setColors(prev => prev.filter(c => c.id !== pendingRemoveColorId));
+                setActiveColorId(prev => prev === pendingRemoveColorId ? null : prev);
+                setPendingRemoveColorId(null);
+                showToast("Color removed from palette.");
+            } else if (e.key === 'Escape') {
+                setPendingRemoveColorId(null); 
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [pendingRemoveColorId]);
+
+    useEffect(() => {
+        if (!imageSrc) return;
+        const img = new Image();
+        img.onload = () => {
+            const canvas = canvasRef.current;
+            const width = img.width;
+            const height = img.height;
+
+            canvas.width = width;
+            canvas.height = height;
+            
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            originalImageDataRef.current = ctx.getImageData(0, 0, width, height);
+            
+            if (previewCanvasRef.current) {
+                previewCanvasRef.current.width = width;
+                previewCanvasRef.current.height = height;
+            }
+            setImageLoaded(true);
+            setColors([]);
+            setActiveColorId(null);
+            setShowUnmapped(false);
+            setPendingRemoveColorId(null);
+            setMapJson('');
+            setPreviewPolys([]);
+        };
+        img.src = imageSrc;
+    }, [imageSrc]);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas || !originalImageDataRef.current || !imageLoaded) return;
+        
+        const ctx = canvas.getContext('2d');
+        const origData = originalImageDataRef.current;
+        
+        if (activeColorId === null && !showUnmapped) {
+            ctx.putImageData(origData, 0, 0);
+            return;
+        }
+
+        const w = origData.width;
+        const h = origData.height;
+        const newImageData = new ImageData(new Uint8ClampedArray(origData.data), w, h);
+        const data = newImageData.data;
+        const tol = Number(colorTolerance);
+
+        if (showUnmapped) {
+            for (let i = 0; i < data.length; i += 4) {
+                if (data[i+3] < 50) continue;
+                const r = data[i], g = data[i+1], b = data[i+2];
+                let matched = false;
+                for (let c of colors) {
+                    const dist = Math.sqrt((r-c.r)**2 + (g-c.g)**2 + (b-c.b)**2);
+                    if (dist <= tol) { matched = true; break; }
+                }
+                
+                if (matched) {
+                    data[i] = 0;
+                    data[i+1] = 0;
+                    data[i+2] = 0;
+                    data[i+3] = 255; 
+                } 
+            }
+        } else if (activeColorId !== null) {
+            const activeColor = colors.find(c => c.id === activeColorId);
+            if (activeColor) {
+                for (let i = 0; i < data.length; i += 4) {
+                    if (data[i+3] < 50) { data[i+3] = 0; continue; }
+                    const r = data[i], g = data[i+1], b = data[i+2];
+                    const dist = Math.sqrt((r-activeColor.r)**2 + (g-activeColor.g)**2 + (b-activeColor.b)**2);
+                    if (dist > tol) {
+                        data[i+3] = 40; 
+                    }
+                }
+            }
+        }
+        
+        ctx.putImageData(newImageData, 0, 0);
+    }, [activeColorId, showUnmapped, colors, colorTolerance, imageLoaded]);
+
+    const processFile = (file) => {
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => setImageSrc(event.target.result);
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handleCanvasClick = (e) => {
+        const canvas = canvasRef.current;
+        if (!canvas || !originalImageDataRef.current) return;
+        
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = Math.floor((e.clientX - rect.left) * scaleX);
+        const y = Math.floor((e.clientY - rect.top) * scaleY);
+
+        const w = originalImageDataRef.current.width;
+        const idx = (y * w + x) * 4;
+        const data = originalImageDataRef.current.data;
+        
+        if (data[idx+3] > 10) { 
+            const r = data[idx], g = data[idx+1], b = data[idx+2];
+            const tol = Number(colorTolerance);
+            let exists = false;
+            let matchedColor = null;
+
+            for (let c of colors) {
+                const dist = Math.sqrt((r-c.r)**2 + (g-c.g)**2 + (b-c.b)**2);
+                if (dist <= tol) { 
+                    exists = true; 
+                    matchedColor = c;
+                    break; 
+                }
+            }
+
+            if (!exists) {
+                const newId = Date.now();
+                setColors([...colors, { r, g, b, id: newId, type: 'physics' }]);
+                setActiveColorId(newId);
+                setPendingRemoveColorId(null);
+                showToast("Color added to palette.");
+            } else {
+                if(matchedColor) {
+                    setPendingRemoveColorId(matchedColor.id);
+                    showToast("Color already selected. Press 'Enter' to confirm removal.");
+                }
+            }
+        }
+    };
+
+    const handleAutoPick = () => {
+        if (!originalImageDataRef.current) return;
+        setIsProcessing(true);
+        setTimeout(() => {
+            const imgData = originalImageDataRef.current.data;
+            const newColors = [...colors];
+            const tol = Number(colorTolerance);
+            
+            for (let i = 0; i < imgData.length; i += 32) {
+                if (imgData[i+3] < 50) continue;
+                const r = imgData[i], g = imgData[i+1], b = imgData[i+2];
+                let matched = false;
+                for (let c of newColors) {
+                    const dist = Math.sqrt((r-c.r)**2 + (g-c.g)**2 + (b-c.b)**2);
+                    if (dist <= tol) { matched = true; break; }
+                }
+                if (!matched) {
+                    newColors.push({ r, g, b, id: Date.now() + i, type: 'physics' });
+                }
+            }
+            setColors(newColors);
+            setIsProcessing(false);
+            setPendingRemoveColorId(null);
+            showToast(`Auto-extracted ${newColors.length - colors.length} new colors.`);
+        }, 50);
+    };
+
+    const handleClearAllColors = () => {
+        setColors([]);
+        setActiveColorId(null);
+        setShowUnmapped(false);
+        setPendingRemoveColorId(null);
+        showToast("All colors removed from palette.");
+    };
+
+    const generateMap = () => {
+        if (!canvasRef.current || colors.length === 0 || !originalImageDataRef.current) return;
+        setIsProcessing(true);
+
+        setTimeout(() => {
+            const w = originalImageDataRef.current.width;
+            const h = originalImageDataRef.current.height;
+            const imgData = originalImageDataRef.current.data;
+
+            const finalMap = generateGameObjects(
+                imgData, 
+                w, 
+                h, 
+                colors, 
+                colorTolerance, 
+                outputLimit
+            );
+
+            const previewData = finalMap.objects.map(obj => ({
+                color: obj._colorStr || `rgb(${(obj.color >> 16) & 255}, ${(obj.color >> 8) & 255}, ${obj.color & 255})`,
+                vertices: obj._originalPoly || obj.vertices
+            }));
+
+            finalMap.objects.forEach(obj => {
+                delete obj._area;
+                delete obj._colorStr;
+                delete obj._originalPoly;
+            });
+
+            setMapJson(JSON.stringify(finalMap, null, 2));
+            setPreviewPolys(previewData);
+            setActiveColorId(null);
+            setShowUnmapped(false);
+            setIsProcessing(false);
+
+            if (previewCanvasRef.current) {
+                const pCtx = previewCanvasRef.current.getContext('2d');
+                pCtx.clearRect(0, 0, w, h);
+                previewData.forEach(poly => {
+                    if(!poly.vertices || poly.vertices.length === 0) return;
+                    pCtx.beginPath();
+                    pCtx.moveTo(poly.vertices[0].x, poly.vertices[0].y);
+                    for (let i = 1; i < poly.vertices.length; i++) {
+                        pCtx.lineTo(poly.vertices[i].x, poly.vertices[i].y);
+                    }
+                    pCtx.closePath();
+                    pCtx.fillStyle = poly.color;
+                    pCtx.fill();
+                    pCtx.strokeStyle = "rgba(255,255,255,0.2)";
+                    pCtx.lineWidth = 1;
+                    pCtx.stroke();
+                });
+            }
+        }, 50);
+    };
+
+    const copyToClipboard = () => {
+        const textArea = document.createElement("textarea");
+        textArea.value = mapJson;
+        textArea.style.position = "fixed"; 
+        textArea.style.top = "-9999px";
+        document.body.appendChild(textArea);
+        textArea.focus(); 
+        textArea.select();
+        try { 
+            document.execCommand('copy'); 
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch (e) { 
+            console.error("Failed to copy map data", e); 
+        }
+        document.body.removeChild(textArea);
+    };
+
+    return (
+        <div className="min-h-screen bg-gray-950 p-6 font-sans text-gray-200 relative">
+            {notification && (
+                <div className="fixed top-6 left-1/2 transform -translate-x-1/2 bg-indigo-600 text-white px-6 py-3 rounded-xl shadow-xl font-medium flex items-center gap-3 z-50 animate-fade-in-down">
+                    <AlertCircle size={20} />
+                    {notification}
+                </div>
+            )}
+
+            <div className="max-w-6xl mx-auto space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+                    <div className="space-y-6">
+                        <div className="bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-800">
+                            <div className="flex justify-between items-center mb-4">
+                                <h2 className="text-lg font-semibold flex items-center gap-2"><ImageIcon size={20}/> Source Image</h2>
+                                {imageSrc && (
+                                    <button 
+                                        onClick={() => setImageSrc(null)}
+                                        className="text-xs font-medium bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-lg transition-colors border border-gray-700"
+                                    >
+                                        Clear Image
+                                    </button>
+                                )}
+                            </div>
+                            
+                            {!imageSrc ? (
+                                <div 
+                                    className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${isDragging ? 'border-indigo-500 bg-indigo-500/10' : 'border-gray-700 hover:bg-gray-800'}`}
+                                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                                    onDragLeave={() => setIsDragging(false)}
+                                    onDrop={(e) => { e.preventDefault(); setIsDragging(false); processFile(e.dataTransfer.files[0]); }}
+                                >
+                                    <input type="file" accept="image/png, image/jpeg, image/webp" onChange={(e) => processFile(e.target.files[0])} className="hidden" id="file-upload" />
+                                    <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center gap-3 w-full h-full">
+                                        <Upload size={32} className={`${isDragging ? 'text-indigo-400' : 'text-gray-500'}`} />
+                                        <span className="font-medium text-gray-300">
+                                            {isDragging ? 'Drop image here' : 'Click, Drag & Drop, or Ctrl+V to paste'}
+                                        </span>
+                                        <span className="text-sm text-gray-500">Processes at native high resolution</span>
+                                    </label>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <p className="text-sm text-gray-400 flex items-center gap-2">
+                                        <Crosshair size={16}/> Click anywhere to pick base colors. (Ctrl+V works here too)
+                                    </p>
+                                    <div className="relative overflow-hidden rounded-xl border border-gray-800 bg-gray-950 flex justify-center">
+                                        <canvas 
+                                            ref={canvasRef} 
+                                            onClick={handleCanvasClick}
+                                            className="cursor-crosshair max-w-full h-auto object-contain"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-800">
+                            <h2 className="text-lg font-semibold mb-6 flex items-center gap-2"><Settings size={20}/> Processing Rules</h2>
+                            
+                            <div className="mb-6 bg-gray-950 p-4 rounded-xl border border-gray-800">
+                                <label className="flex justify-between text-sm font-medium text-gray-300 mb-3">
+                                    <span>Color Tolerance (Shade Grouping)</span>
+                                    <span className="text-indigo-400 font-mono bg-indigo-500/10 px-2 rounded-md">{colorTolerance}</span>
+                                </label>
+                                <input 
+                                    type="range" min="1" max="150" value={colorTolerance} 
+                                    onChange={(e) => setColorTolerance(Number(e.target.value))}
+                                    className="w-full accent-indigo-500 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                                />
+                                <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                                    Controls how close a shade must be to group with your picked colors. (Note: The JSON export will strictly retain the <b>exact original shades</b> inside these groups).
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-3 mb-4">
+                                <button 
+                                    onClick={handleAutoPick}
+                                    disabled={!imageLoaded || isProcessing}
+                                    className="flex items-center justify-center gap-2 py-2 bg-gray-800 hover:bg-gray-700 text-sm font-medium rounded-lg text-gray-200 transition-colors disabled:opacity-50"
+                                >
+                                    <Sparkles size={16}/> Auto-Pick
+                                </button>
+                                <button 
+                                    onClick={() => { setShowUnmapped(!showUnmapped); setActiveColorId(null); }}
+                                    disabled={!imageLoaded || isProcessing}
+                                    className={`flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-lg transition-colors ${showUnmapped ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : 'bg-gray-800 hover:bg-gray-700 text-gray-200'}`}
+                                >
+                                    {showUnmapped ? <EyeOff size={16}/> : <Eye size={16}/>}
+                                    {showUnmapped ? 'Hide Mapped' : 'Highlight Mapped'}
+                                </button>
+                                <button 
+                                    onClick={handleClearAllColors}
+                                    disabled={colors.length === 0 || isProcessing}
+                                    className={`flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-lg transition-colors ${colors.length > 0 ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20' : 'bg-gray-800 text-gray-500'}`}
+                                >
+                                    <Trash2 size={16}/> Clear All
+                                </button>
+                            </div>
+
+                            <div className="space-y-2 mb-6 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                                {colors.length === 0 ? (
+                                    <p className="text-sm text-gray-500 italic text-center py-4 bg-gray-950 rounded-xl border border-gray-800">No colors selected.</p>
+                                ) : (
+                                    colors.map(c => (
+                                        <div 
+                                            key={c.id} 
+                                            onClick={() => { setActiveColorId(activeColorId === c.id ? null : c.id); setShowUnmapped(false); }}
+                                            className={`flex items-center gap-3 p-2 bg-gray-950 border rounded-xl cursor-pointer transition-colors ${pendingRemoveColorId === c.id ? 'border-red-500 bg-red-500/5' : activeColorId === c.id ? 'border-indigo-500 shadow-[0_0_0_2px_rgba(99,102,241,0.2)]' : 'border-gray-800 hover:border-gray-700'}`}
+                                        >
+                                            <div className="w-8 h-8 rounded-lg shadow-sm border border-gray-700 flex-shrink-0" style={{backgroundColor: `rgb(${c.r},${c.g},${c.b})`}} />
+                                            <div className="flex-1" onClick={e => e.stopPropagation()}>
+                                                <select 
+                                                    value={c.type} 
+                                                    onChange={(e) => setColors(colors.map(col => col.id === c.id ? { ...col, type: e.target.value } : col))}
+                                                    className="w-full text-sm bg-gray-800 border border-gray-700 text-gray-200 rounded-lg p-1.5 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                >
+                                                    <option value="physics">Normal Physics</option>
+                                                    <option value="death">Death / Kill</option>
+                                                    <option value="bouncy">Bouncy</option>
+                                                    <option value="nonphysics">Non-Physics (Bg)</option>
+                                                </select>
+                                            </div>
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); setColors(colors.filter(col => col.id !== c.id)); if (pendingRemoveColorId === c.id) setPendingRemoveColorId(null); }} 
+                                                className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-gray-800 rounded-lg transition-colors"
+                                            >
+                                                <Trash2 size={16}/>
+                                            </button>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+
+                            <button 
+                                onClick={generateMap}
+                                disabled={isProcessing || colors.length === 0}
+                                className={`w-full py-3 flex items-center justify-center gap-2 rounded-xl font-semibold text-white transition-all ${isProcessing || colors.length === 0 ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700' : 'bg-indigo-600 hover:bg-indigo-500 shadow-lg hover:shadow-indigo-500/20 active:scale-[0.98]'}`}
+                            >
+                                {isProcessing ? <span className="animate-pulse">Processing Optimal Geometry...</span> : 'Generate Map JSON'}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="space-y-6">
+                        <div className="bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-800">
+                            <h2 className="text-lg font-semibold mb-4 text-gray-100">Exported Geometry Preview</h2>
+                            <div className="relative overflow-hidden rounded-xl border border-gray-800 bg-gray-950 flex justify-center min-h-[250px] items-center">
+                                {previewPolys.length === 0 && <span className="text-gray-600 italic text-sm absolute">Generated geometry will appear here</span>}
+                                <canvas ref={previewCanvasRef} className="max-w-full h-auto object-contain" />
+                            </div>
+                            <div className="mt-4 flex items-center justify-between text-xs font-medium text-gray-500">
+                                <div className="flex items-center gap-2">
+                                    <span>Max Output Limits:</span>
+                                    <input 
+                                        type="number" min="1" max="1000" value={outputLimit} 
+                                        onChange={(e) => setOutputLimit(e.target.value)}
+                                        className="w-16 bg-gray-950 border border-gray-700 text-gray-200 rounded p-1 text-center outline-none focus:border-indigo-500"
+                                    />
+                                </div>
+                                <span>Exported: {previewPolys.length} polygons</span>
+                            </div>
+                        </div>
+
+                        <div className="bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-800 flex flex-col h-[400px]">
+                            <div className="flex justify-between items-center mb-4">
+                                <h2 className="text-lg font-semibold text-gray-100">Map Data (JSON)</h2>
+                                <button 
+                                    onClick={copyToClipboard}
+                                    disabled={!mapJson}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${copied ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                                >
+                                    {copied ? <Check size={16}/> : <Copy size={16}/>}
+                                    {copied ? 'Copied!' : 'Copy JSON'}
+                                </button>
+                            </div>
+                            <textarea 
+                                readOnly 
+                                value={mapJson}
+                                placeholder="Generated Map JSON data..."
+                                className="flex-1 w-full bg-gray-950 border border-gray-800 rounded-xl p-4 font-mono text-[11px] leading-relaxed text-gray-400 resize-none outline-none focus:ring-1 focus:ring-indigo-500 custom-scrollbar"
+                            />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <style dangerouslySetInnerHTML={{__html: `
+                .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #4B5563; }
+                
+                input[type=range]::-webkit-slider-thumb {
+                    appearance: none;
+                    width: 16px;
+                    height: 16px;
+                    background: #818cf8;
+                    border-radius: 50%;
+                    cursor: pointer;
+                    transition: transform 0.1s;
+                }
+                input[type=range]::-webkit-slider-thumb:hover {
+                    transform: scale(1.2);
+                }
+                
+                @keyframes fadeInDown {
+                    from { opacity: 0; transform: translate(-50%, -10px); }
+                    to { opacity: 1; transform: translate(-50%, 0); }
+                }
+                .animate-fade-in-down {
+                    animation: fadeInDown 0.3s ease-out forwards;
+                }
+            `}} />
+        </div>
+    );
+}
