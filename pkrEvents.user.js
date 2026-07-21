@@ -1,6 +1,6 @@
 	// ==UserScript==
 	// @name         pkrEvents
-	// @version      1.4.1
+	// @version      1.4.2
 	// @description  Bouldering-style parkour competition judge tool for Bonk.io
 	// @author       eldertubby
 	// @match        https://bonk.io/gameframe-release.html
@@ -33,19 +33,29 @@
 		}
 	};
 
-	pkrEventScores.rules = [
-		"This parkour competition style is inspired by the bouldering sports. It works like this:",
-		"There will be a series of unseen maps that the participants have not played before. Players will have 4 minutes to play each map.",
-		"Reaching the cap zone is reffered to as a <b>'Top'</b>.",
-		"Each map also has a circular mid-point indicator. Reaching it secures a <b>'Zone'</b>.",
-		"Your final score tracks your Tops, Zones, and how many attempts you took to reach them.",
-		"<b style='color:#4fc3f7'>Score Breakdown Example:</b> <span style='font-family: monospace; font-size: 18px; color: #4caf50;'>8T 10z 14 17</span>",
-		"<b>8T</b>: 8 Tops (the player finished 8 maps).",
-		"<b>10z</b>: 10 Zones (they reached the midway point on 10 maps).",
-		"<b>14</b>: Attempts to Top (it took 14 total tries to get those 8 Tops).",
-		"<b>17</b>: Attempts to Zone (it took 17 total tries to get those 10 Zones).",
-		"<i style='color: #aaa;'>Winners are decided by: Most Tops > Most Zones > Fewest Top Attempts > Fewest Zone Attempts.</i>"
-	];
+	pkrEventScores.rules = {
+		event: [
+			"This parkour competition style is inspired by the bouldering sports. It works like this:",
+			"There will be a series of unseen maps that the participants have not played before. Players will have 4 minutes to play each map.",
+			"Reaching the cap zone is reffered to as a <b>'Top'</b>.",
+			"Each map also has a circular mid-point indicator. Reaching it secures a <b>'Zone'</b>.",
+			"Your final score tracks your Tops, Zones, and how many attempts you took to reach them.",
+			"<b style='color:#4fc3f7'>Score Breakdown Example:</b> <span style='font-family: monospace; font-size: 18px; color: #4caf50;'>8T 10z 14 17</span>",
+			"<b>8T</b>: 8 Tops (the player finished 8 maps).",
+			"<b>10z</b>: 10 Zones (they reached the midway point on 10 maps).",
+			"<b>14</b>: Attempts to Top (it took 14 total tries to get those 8 Tops).",
+			"<b>17</b>: Attempts to Zone (it took 17 total tries to get those 10 Zones).",
+			"<i style='color: #aaa;'>Winners are decided by: Most Tops > Most Zones > Fewest Top Attempts > Fewest Zone Attempts.</i>"
+		],
+		mapmaking: [
+			"Each map should feature a designated zone. It is recommended to use non-physics shapes to visually indicate its location.",
+			"The mod automatically recognizes when a player reaches a zone if you place a Cap Zone shape directly over it.",
+			"<b>Crucial Naming Requirement:</b> Both the zone shape and the real final cap zone shape MUST have names starting with <b>'cp'</b> (e.g., <code>cp_zone</code> and <code>cp_real</code>). This prevents the <i>lbReplay</i> mod from prematurely generating a replay file when a player touches the zone.",
+			"<b>Winning Time:</b> Ensure the map's winning time is set to <b>999</b>.",
+			"<b>Spawn Safety:</b> To prevent false auto-death logging from accidental deaths immediately after spawn, deaths do not count for the first <b>2 seconds</b> after spawning.",
+			"<b>Examples:</b> For actual examples of properly configured event maps, please search for recent maps by <b>'eldertubby'</b>, such as the map <i>'World Climbing design'</i>."
+		]
+	};
 
 	pkrEventScores.init = function() {
 		if (!window.bonkHUD || !window.bonkAPI) {
@@ -917,8 +927,13 @@
 		modal.innerHTML = `
 			<h2 style="text-align: center; margin-top: 0; margin-bottom: 15px; color: #4fc3f7; flex-shrink: 0;">Competition Info</h2>
 			<div style="flex-grow: 1; overflow-y: auto; padding-right: 10px;" class="bonkhud-scrollbar-kit">
+				<h3 style="color: #ff8c00; margin-top: 0; margin-bottom: 8px;">Info for Event</h3>
+				<ul style="line-height: 1.5; font-size: 15px; padding-left: 20px; margin: 0; margin-bottom: 15px;">
+					${this.rules.event.map(r => `<li style="margin-bottom: 8px;">${r}</li>`).join('')}
+				</ul>
+				<h3 style="color: #ff8c00; margin-top: 0; margin-bottom: 8px;">Info for Mapmaking</h3>
 				<ul style="line-height: 1.5; font-size: 15px; padding-left: 20px; margin: 0;">
-					${this.rules.map(r => `<li style="margin-bottom: 8px;">${r}</li>`).join('')}
+					${this.rules.mapmaking.map(r => `<li style="margin-bottom: 8px;">${r}</li>`).join('')}
 				</ul>
 			</div>
 			<button id="pkr_rules_close" style="margin-top: 15px; padding: 10px; background: #555; color: white; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; font-family: 'futurept_b1'; font-size: 16px; flex-shrink: 0;">Close</button>
