@@ -179,6 +179,7 @@
 		container.style.flexDirection = "column";
 		container.style.height = "100%";
 		container.style.padding = "5px 30px";
+		container.style.fontFamily = "futurept_b1";
 		container.className = "bonkhud-text-color";
 
 		// --- Top Controls (Mod Toggle & Copy) ---
@@ -552,6 +553,7 @@
 						if (this.state.autoRemoveTimeUp) {
 							this.eliminatePlayersAtSpawn();
 						}
+						this.showKillOverlay();
 						this.renderTable();
 					}
 				}
@@ -752,6 +754,9 @@
 	};
 
 	pkrEventScores.showKillOverlay = function() {
+		// Prevent opening multiple instances
+		if (document.getElementById("pkr_kill_modal")) return;
+
 		const map = this.state.mapData[this.state.currentMap];
 		if (!map || !map.started) {
 			alert("No active game to eliminate players from.");
@@ -766,52 +771,73 @@
 		}
 
 		if (activePlayers.length === 0) {
-			alert("No eligible players to eliminate on this map.");
+			console.log("pkrEvents: No eligible players to eliminate on this map.");
 			return;
 		}
 
-		const overlay = document.createElement("div");
-		Object.assign(overlay.style, {
-			position: "fixed", top: "0", left: "0", width: "100%", height: "100%",
-			backgroundColor: "rgba(0, 0, 0, 0.8)", zIndex: "100000",
-			display: "flex", justifyContent: "center", alignItems: "center",
-			fontFamily: "futurept_b1", color: "white"
-		});
-
 		const modal = document.createElement("div");
+		modal.id = "pkr_kill_modal";
 		Object.assign(modal.style, {
-			width: "350px", backgroundColor: "#1e1e1e",
+			position: "fixed", left: (window.innerWidth / 2 - 175) + "px", top: "100px",
+			width: "350px", backgroundColor: "#1e1e1e", color: "white",
 			borderRadius: "8px", border: "2px solid #555",
-			display: "flex", flexDirection: "column", padding: "20px"
+			display: "flex", flexDirection: "column", padding: "20px",
+			zIndex: "100000", fontFamily: "futurept_b1",
+			boxShadow: "0 4px 15px rgba(0,0,0,0.5)"
 		});
 
+		// Render checkboxes unchecked by default
 		let checkboxHTML = activePlayers.map(p => `
 			<label style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px; cursor: pointer;">
-				<input type="checkbox" value="${p}" checked class="pkr-kill-cb" style="cursor: pointer;">
+				<input type="checkbox" value="${p}" class="pkr-kill-cb" style="cursor: pointer;">
 				${p}
 			</label>
 		`).join("");
 
 		modal.innerHTML = `
-			<h3 style="margin-top: 0; color: #ff8c00; text-align: center;">Eliminate Players</h3>
-			<p style="font-size: 13px; color: #aaa; margin-bottom: 15px;">Select players to instantly eliminate and kill:</p>
+			<h3 id="pkr_kill_header" style="margin-top: 0; color: #ff8c00; text-align: center; cursor: move; user-select: none; background: #333; padding: 5px; border-radius: 4px;">Eliminate Players</h3>
+			<p style="font-size: 13px; color: #aaa; margin-bottom: 15px; text-align: center;">Choose players to instantly eliminate.<br><span style="color: #ff4444;">(Note: This feature is buggy and may not always trigger deaths visually)</span></p>
 			<div style="flex-grow: 1; max-height: 250px; overflow-y: auto; background: #222; padding: 10px; border-radius: 4px; border: 1px solid #444;" class="bonkhud-scrollbar-kit">
 				${checkboxHTML}
 			</div>
 			<div style="display: flex; gap: 10px; margin-top: 20px;">
-				<button id="pkr_kill_cancel" style="flex: 1; padding: 10px; background: #555; color: white; border: none; cursor: pointer; border-radius: 4px;">Cancel</button>
-				<button id="pkr_kill_confirm" style="flex: 1; padding: 10px; background: #d32f2f; color: white; border: none; cursor: pointer; border-radius: 4px; font-weight: bold;">Eliminate</button>
+				<button id="pkr_kill_cancel" style="flex: 1; padding: 10px; background: #555; color: white; border: none; cursor: pointer; border-radius: 4px; font-family: 'futurept_b1'; font-size: 14px;">Cancel</button>
+				<button id="pkr_kill_confirm" style="flex: 1; padding: 10px; background: #d32f2f; color: white; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; font-family: 'futurept_b1'; font-size: 14px;">Eliminate</button>
 			</div>
 		`;
 
-		overlay.appendChild(modal);
-		document.body.appendChild(overlay);
+		document.body.appendChild(modal);
 
-		overlay.querySelector("#pkr_kill_cancel").onclick = () => overlay.remove();
-		overlay.querySelector("#pkr_kill_confirm").onclick = () => {
+		// Draggable Logic
+		const header = modal.querySelector("#pkr_kill_header");
+		let isDragging = false, startX, startY, startLeft, startTop;
+		
+		header.onmousedown = (e) => {
+			isDragging = true;
+			startX = e.clientX; startY = e.clientY;
+			startLeft = modal.offsetLeft; startTop = modal.offsetTop;
+			
+			const onMouseMove = (e) => {
+				if (!isDragging) return;
+				modal.style.left = (startLeft + (e.clientX - startX)) + "px";
+				modal.style.top = (startTop + (e.clientY - startY)) + "px";
+			};
+			
+			const onMouseUp = () => {
+				isDragging = false;
+				document.removeEventListener("mousemove", onMouseMove);
+				document.removeEventListener("mouseup", onMouseUp);
+			};
+			
+			document.addEventListener("mousemove", onMouseMove);
+			document.addEventListener("mouseup", onMouseUp);
+		};
+
+		modal.querySelector("#pkr_kill_cancel").onclick = () => modal.remove();
+		modal.querySelector("#pkr_kill_confirm").onclick = () => {
 			const selectedBoxes = Array.from(modal.querySelectorAll(".pkr-kill-cb:checked"));
 			if (selectedBoxes.length === 0) {
-				overlay.remove();
+				modal.remove();
 				return;
 			}
 
@@ -827,7 +853,7 @@
 					}
 				});
 				this.renderTable();
-				overlay.remove();
+				modal.remove();
 			}
 		};
 	};
@@ -899,6 +925,11 @@
 		overlay.appendChild(modal);
 		document.body.appendChild(overlay);
 		overlay.querySelector("#pkr_rules_close").onclick = () => overlay.remove();
+		
+		// Close when clicking directly on the dark overlay background
+		overlay.addEventListener("mousedown", (e) => {
+			if (e.target === overlay) overlay.remove();
+		});
 	};
 
 	pkrEventScores.showReportOverlay = function() {
