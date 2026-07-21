@@ -6,6 +6,8 @@
 	// @match        https://bonk.io/gameframe-release.html
 	// @match        https://bonkisback.io/gameframe-release.html
 	// @run-at       document-end
+	// @updateURL	 https://github.com/elder-tubby/bonkio-public-notes/raw/refs/heads/main/pkrEvents.user.js
+	// @downloadURL  https://github.com/elder-tubby/bonkio-public-notes/raw/refs/heads/main/pkrEvents.user.js
 	// @grant        none
 	// ==/UserScript==
 
