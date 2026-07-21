@@ -1,6 +1,6 @@
 	// ==UserScript==
 	// @name         pkrEvents
-	// @version      1.4.2
+	// @version      1.4.3
 	// @description  Bouldering-style parkour competition judge tool for Bonk.io
 	// @author       eldertubby
 	// @match        https://bonk.io/gameframe-release.html
@@ -50,8 +50,8 @@
 		mapmaking: [
 			"Each map should feature a designated zone. It is recommended to use non-physics shapes to visually indicate its location.",
 			"The mod automatically recognizes when a player reaches a zone if you place a Cap Zone shape directly over it.",
-			"<b>Crucial Naming Requirement:</b> Both the zone shape and the real final cap zone shape MUST have names starting with <b>'cp'</b> (e.g., <code>cp_zone</code> and <code>cp_real</code>). This prevents the <i>lbReplay</i> mod from prematurely generating a replay file when a player touches the zone.",
-			"<b>Winning Time:</b> Ensure the map's winning time is set to <b>999</b>.",
+			"<b>Crucial Naming Requirement:</b> Both the zone shape and the real final cap zone shape MUST have names starting with <b>'cp'</b> (e.g., <code>cp_zone</code> and <code>cp_real</code>). This prevents the <i>lbReplay</i> mod from prematurely generating a replay file when a player touches the zone. To be safe, ensure the zone shape's winning time is set to 999.",
+			"Make sure all participants are on the same team.",
 			"<b>Spawn Safety:</b> To prevent false auto-death logging from accidental deaths immediately after spawn, deaths do not count for the first <b>2 seconds</b> after spawning.",
 			"<b>Examples:</b> For actual examples of properly configured event maps, please search for recent maps by <b>'eldertubby'</b>, such as the map <i>'World Climbing design'</i>."
 		]
@@ -931,7 +931,7 @@
 				<ul style="line-height: 1.5; font-size: 15px; padding-left: 20px; margin: 0; margin-bottom: 15px;">
 					${this.rules.event.map(r => `<li style="margin-bottom: 8px;">${r}</li>`).join('')}
 				</ul>
-				<h3 style="color: #ff8c00; margin-top: 0; margin-bottom: 8px;">Info for Mapmaking</h3>
+				<h3 style="color: #ff8c00; margin-top: 0; margin-bottom: 8px;">Info for Event Host</h3>
 				<ul style="line-height: 1.5; font-size: 15px; padding-left: 20px; margin: 0;">
 					${this.rules.mapmaking.map(r => `<li style="margin-bottom: 8px;">${r}</li>`).join('')}
 				</ul>
