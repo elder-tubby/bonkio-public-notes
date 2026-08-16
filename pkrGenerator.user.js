@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         pkrGenerator
 // @namespace    http://tampermonkey.net/
-// @version      0.3.8
+// @version      0.3.9
 // @description  Converts elder-tubby's parkour generator data to bonk.io maps. Contains a modified version of Clarifi's pkrUtils. Records and outputs player position. Requires 'BonkLIB' mod.
 // @author       eldertubby + Salama + Clarifi
 // @license      MIT
@@ -424,7 +424,7 @@ const addPkrDiv = () => {
     document.getElementById('pkr_clear_maps_btn').appendChild(clearBtn);
 
     // Now that pkrDiv is in the DOM, find the container and append the buttons
-    let recordButton = bonkHUD.generateButton("Start Recording");
+    let recordButton = bonkHUD.generateButton("Start Recording (ALT 3)");
     recordButton.style.marginBottom = "5px";
     recordButton.style.height = "25px";
     recordButton.id = "startRecordingButton";
@@ -432,7 +432,7 @@ const addPkrDiv = () => {
     let recordButtonContainer = document.getElementById("recordButtonContainer");
     recordButtonContainer.appendChild(recordButton);
 
-    let pasteButton = bonkHUD.generateButton("Paste Data");
+    let pasteButton = bonkHUD.generateButton("Paste Data  (ALT 1)");
     pasteButton.style.marginBottom = "5px";
     pasteButton.style.height = "25px";
     pasteButton.id = "pasteDataButton";
@@ -455,11 +455,11 @@ const addPkrDiv = () => {
             posRecorder.isRecording = true;
             posRecorder.positionData = [];
             console.log("Recording started...");
-            recordButton.textContent = "Stop and copy";
+            recordButton.textContent = "Stop and copy  (ALT 3)";
             recordButton.style.backgroundColor = "#4d0004";
         } else if (posRecorder.isRecording) {
             stopRecording();
-            recordButton.textContent = "Start Recording";
+            recordButton.textContent = "Start Recording (ALT 3)";
             recordButton.style.backgroundColor = "#0B161C";
         }
     };
