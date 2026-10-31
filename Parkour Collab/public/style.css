@@ -1,0 +1,756 @@
+/* Globals & Variables */
+:root {
+  /* Canvas sizing */
+  --canvas-width: 730px;
+  --canvas-height: 500px;
+  /* Layout spacing */
+  --panel-gap: 1rem;
+  /* Font sizes */
+  --left-panel-font-size: 13px;
+  --home-font-size: 16px;
+  /* Color tokens */
+  --bg: #121212;
+  --panel-bg: #1f1f1f;
+  --card-bg: #222;
+  --muted-border: #333;
+  --accent: #d2691e;
+  --font-family: "Lexend", sans-serif;
+  --status-ready: #28a745;
+  --status-not-ready: #dc3545;
+  --status-in-game: #ffc107;
+}
+
+/* Reset */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-family);
+  background: var(--bg);
+  color: #eee;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+/* Utility Classes */
+.hidden {
+  display: none !important;
+}
+
+/* Component Standardization */
+.btn {
+  font-family: var(--font-family);
+  font-size: 14px;
+  padding: 0.6rem 1.2rem;
+  background: #333;
+  color: #eee;
+  border: none;
+  border-radius: 5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+.btn:hover {
+  background: #444;
+}
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.btn.btn-small {
+  font-size: 13px;
+  padding: 0.45rem 0.85rem;
+  width: fit-content;
+}
+/* Icon-only button adjustment */
+.btn.btn-icon {
+  padding: 0.3rem;     /* tighter padding around the icon */
+  width: 2rem;         /* square shape */
+  height: 1.6rem;
+  display: flex;       /* center the emoji/icon */
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;   /* adjust icon size */
+  margin-top: 0.5rem;
+  align-self: flex-end; /* pushes it down to baseline with Send */
+
+}
+
+
+input[type="text"],
+input[type="number"], 
+select {
+  font-family: var(--font-family);
+  padding: 0.5rem;
+  border-radius: 4px;
+  border: 1px solid #444;
+  background: #1e1e1e;
+  color: #eee;
+  font-size: 14px;
+  width: 100%;
+}
+
+/* Optional: Add a clean focus style for all inputs */
+input[type="text"]:focus,
+input[type="number"]:focus,
+select:focus {
+  border-color: #708090; /* A subtle accent color */
+  box-shadow: 0 0 5px rgba(112, 128, 144, 0.5);
+  outline: none;
+}
+
+select {
+  text-align: center;
+  text-align-last: center;
+}
+select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Scrollbar Standardization */
+.control-box::-webkit-scrollbar,
+#chatMessages::-webkit-scrollbar,
+.tips-list::-webkit-scrollbar,
+.player-list::-webkit-scrollbar {
+  width: 7px;
+}
+.control-box::-webkit-scrollbar-thumb,
+#chatMessages::-webkit-scrollbar-thumb,
+.tips-list::-webkit-scrollbar-thumb,
+.player-list::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 4px;
+}
+.control-box,
+.tips-list,
+.player-list {
+  scrollbar-width: thin;
+  scrollbar-color: #444 transparent;
+}
+
+/* HOME SCREEN */
+.home-screen {
+  width: 800px;
+  display: flex;
+  gap: 2rem;
+  background: var(--panel-bg);
+  padding: 2rem;
+  border-radius: 10px;
+  font-size: var(--home-font-size);
+}
+
+.column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.box {
+  background: var(--card-bg);
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--muted-border);
+}
+
+.info-box p,
+.info-box ol,
+.info-box ul {
+  margin-bottom: 0.8rem;
+  line-height: 1.4;
+}
+.info-box ul {
+  margin-top: 1.4rem;
+  padding-left: 1.2rem;
+  list-style-type: disc;
+}
+.info-box li {
+  margin-bottom: 0.4rem;
+}
+.info-link {
+  color: #708090;
+  text-decoration: none;
+}
+.info-link:hover {
+  text-decoration: underline;
+}
+.info-link span {
+  text-decoration: none;
+}
+
+.controls-box input[type="text"] {
+  margin-top: 1rem;
+}
+.controls-box .btn {
+  margin-top: 0.6rem;
+}
+.inline-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+}
+.lobby-message {
+  color: var(--accent);
+  font-size: 14px;
+  margin-top: 1rem;
+}
+.lobby-list {
+  list-style: none;
+  max-height: 200px;
+  overflow-y: auto;
+  padding-left: 0.4rem;
+}
+.lobby-list li {
+  display: grid;
+  grid-template-columns: 1fr 100px;
+  border-bottom: 1px solid var(--muted-border);
+  padding: 0.4rem 0;
+}
+.lobby-list .status-ready {
+  color: var(--status-ready);
+}
+.lobby-list .status-not-ready {
+  color: var(--status-not-ready);
+}
+.lobby-list .status-in-game {
+  color: var(--status-in-game);
+}
+
+/* CANVAS WRAPPER */
+#canvasWrapper {
+  display: flex; /* Default state when not hidden */
+  width: 100vw;
+  height: 100vh;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 1rem;
+}
+.main-panel {
+  display: flex;
+  gap: var(--panel-gap);
+  align-items: stretch;
+}
+.sidebar,
+.chat-box {
+  width: 260px;
+  height: calc(var(--canvas-height) + 128px);
+  background: var(--panel-bg);
+  padding: 1rem;
+  border-right: 1px solid var(--muted-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  font-size: var(--left-panel-font-size);
+}
+.sidebar {
+  width: 240px;
+  margin-right: 0.5rem;
+}
+.chat-box {
+  margin-left: 0.5rem;
+  border-right: none;
+  border-left: 1px solid var(--muted-border);
+}
+.sidebar .box h3,
+.chat-box h3 {
+  margin-bottom: 0.6rem;
+  color: #aaa;
+  font-size: 1rem;
+}
+.sidebar .box:last-child {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.sidebar .box:has(.tips-list) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* allows children to shrink */
+}
+
+.player-list {
+  list-style: none;
+  height: calc(var(--canvas-height) * 0.3);
+  overflow-y: auto;
+  padding-left: 0;
+}
+.player-list li {
+  border-bottom: 1px solid var(--muted-border);
+  padding: 0.45rem;
+  min-height: 36px;
+}
+.player-list li:last-child {
+  border-bottom: none;
+}
+.votes-grid {
+  display: grid;
+  grid-template-columns: 1fr 44px;
+  row-gap: 6px;
+  column-gap: 8px;
+  align-items: center;
+  font-size: inherit;
+}
+.votes-grid input[type="checkbox"] {
+  justify-self: center;
+  transform: scale(0.98);
+}
+.copy-map-row {
+  margin-top: 8px;
+}
+.tips-list {
+  flex: 1;
+  line-height: 1.5;
+  padding-left: 1.1rem;
+  overflow-y: auto;
+  min-height: 0;
+}
+.hotkey-desc {
+  font-size: 0.85em;
+  color: #ccc;
+}
+.canvas-area {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+.canvas-frame {
+  width: var(--canvas-width);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+canvas {
+  width: 100%;
+  height: auto;
+  background: #1e1e1e;
+  border: 2px solid #444;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+  display: block;
+}
+
+/* CONTROL BOX & DYNAMIC EDITOR */
+.control-box {
+  background: var(--card-bg);
+  padding: 0.9rem;
+  padding-top: 0.1rem;
+  border-radius: 8px;
+  width: 100%;
+  height: 115px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  border: 1px solid var(--muted-border);
+  font-size: 13px;
+}
+.control-box #status {
+  width: 100%;
+  text-align: center;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.editor-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 30px;
+  width: 100%;
+  padding: 8px;
+  padding-bottom: 0px;
+}
+.editor-col {
+  flex: 1; /* Makes columns equal width */
+  display: flex;
+  flex-direction: column;
+  gap: 8px; /* Space between rows */
+}
+
+.editor-col-left {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 0px;
+}
+.editor-col-right {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+}
+.editor-row {
+  display: flex;
+  align-items: center;
+  justify-content: left;
+  gap: 8px;
+}
+.editor-row .btn,
+.editor-row select {
+  flex: 1;
+  width: 100%;
+  height: 26px;
+  padding: 4px 8px;
+  font-size: 12px;
+  min-width: 115px;
+}
+.slider-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 1px;
+}
+.slider-row label {
+  width: 55px;
+  flex-shrink: 0;
+  text-align: left;
+  font-size: 12px;
+}
+.slider-row label small {
+  font-size: 10px;
+  opacity: 0.7;
+}
+.slider-row input[type="range"] {
+  flex: 1;
+  flex-grow: 1;
+  height: 24px;
+  margin: 0px;
+}
+.slider-row .slider-value {
+  flex-basis: 30px;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: right;
+  font-size: 12px;
+}
+
+/* Dynamic Editor State Management */
+/* Hide all specific control groups by default */
+.line-controls,
+.poly-controls,
+.circle-controls {
+  display: none;
+}
+
+/* Show the relevant controls based on the data attribute on the parent */
+.control-box[data-editor-mode="line"] .line-controls {
+  display: flex;
+}
+.control-box[data-editor-mode="poly"] .poly-controls {
+  display: flex;
+}
+.control-box[data-editor-mode="circle"] .circle-controls {
+  display: flex;
+}
+
+/* Show the status text ONLY when no specific editor is active */
+.control-box:not([data-editor-mode="line"]):not([data-editor-mode="poly"]):not([data-editor-mode="circle"])
+  #status {
+  display: block;
+}
+
+/* Hide the status text when ANY editor is active */
+.control-box[data-editor-mode="line"] #status,
+.control-box[data-editor-mode="poly"] #status,
+.control-box[data-editor-mode="circle"] #status {
+  display: none;
+}
+
+/* CHAT */
+#chatMessages {
+  background: var(--card-bg);
+  padding: 0.6rem;
+  border-radius: 6px;
+  overflow-y: auto;
+  height: calc(var(--canvas-height) - 40px);
+  border: 1px solid var(--muted-border);
+  font-size: 13px;
+}
+#chatMessages > * {
+  border-bottom: 1px solid var(--muted-border);
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+}
+#chatMessages > *:last-child {
+  border-bottom: none;
+}
+#chatMessages p {
+  margin: 0.25rem 0;
+  word-wrap: break-word;
+}
+#chatInput {
+  padding: 0.45rem;
+}
+#chatSendBtn {
+  align-self: flex-end;
+}
+.chat-sender {
+  color: #bbb;
+  font-weight: 600;
+  margin-right: 4px;
+}
+.chat-error {
+  color: var(--status-not-ready);
+  font-style: italic;
+}
+
+/* POPUP */
+.popup-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex; /* Default state when not hidden */
+  justify-content: center;
+  align-items: center;
+  z-index: 999;
+}
+.popup-box {
+  position: relative;
+  background: var(--panel-bg);
+  padding: 1.5rem;
+  border-radius: 10px;
+  text-align: center;
+  width: 360px;
+  border: 1px solid var(--muted-border);
+}
+.popup-box h2 {
+  margin-bottom: 0.6rem;
+}
+.popup-box p {
+  margin-bottom: 1rem;
+  color: #ddd;
+}
+.popup-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  color: #fff;
+  font-size: 1.1rem;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+.popup-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+.popup-actions .btn {
+  padding: 0.5rem 0.9rem;
+}
+
+/* ADMIN PANEL */
+.admin-panel {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-top: 0px;
+  margin-right: -14px
+}
+.admin-panel-toggle {
+  background: var(--card-bg);
+  border: 1px solid var(--muted-border);
+  color: white !important; /* force white */
+  padding: 0.5rem 0.8rem;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+.admin-panel-toggle:hover {
+    background: #444;
+}
+.admin-panel-content {
+  background: var(--panel-bg);
+  border: 1px solid var(--muted-border);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 0.5rem;
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.admin-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.admin-login-form input, .admin-section input {
+  font-size: 13px;
+  margin-bottom: 0.5rem;
+}
+.admin-login-form .btn, .admin-section .btn {
+  width: 100%;
+}
+.admin-section h4 {
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid var(--muted-border);
+  padding-bottom: 0.3rem;
+  color: #ccc;
+  font-size: 1rem;
+}
+.admin-player-list {
+  list-style: none;
+  max-height: 150px;
+  overflow-y: auto;
+  padding: 0;
+  scrollbar-width: thin;
+  scrollbar-color: #444 transparent;
+}
+.admin-player-list::-webkit-scrollbar { width: 7px; }
+.admin-player-list::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+.admin-player-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 2px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--muted-border);
+}
+.admin-player-item:last-child {
+    border-bottom: none;
+}
+.admin-player-actions .btn {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+/* Add style for the dynamically created lobby password input */
+#lobbyPasswordInput {
+  margin-top: 1rem;
+  margin-bottom: 0.6rem;
+}
+
+#lobbyPasswordInput, #adminPasswordInput {
+  font-size: 13px;
+  margin-bottom: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--muted-border);
+  border-radius: 5px;
+  background: var(--card-bg);
+  color: #eee;
+  width: 100%;
+  font-family: "Lexend", sans-serif;"
+}
+
+/* Add these to your style.css */
+
+.popup-box form {
+  margin-top: 1rem;
+}
+
+.popup-form-row {
+  display: grid;
+  grid-template-columns: 1fr 100px; /* Label | Input */
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.popup-form-row label {
+  text-align: left;
+  font-size: 13px;
+  color: #ccc;
+}
+
+.popup-form-row input[type="number"] {
+  width: 100%; /* Fill the 100px column */
+  padding: 0.4rem;
+  font-size: 13px;
+  background: #1e1e1e;
+  color: #eee;
+  border: 1px solid #444;
+  border-radius: 4px;
+}
+
+.weights-label {
+  display: block;
+  text-align: left;
+  font-size: 13px;
+  color: #ccc;
+  margin-bottom: 8px;
+}
+
+.weights-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  text-align: center;
+  margin-bottom: 12px;
+}
+.weights-row label {
+  text-align: center;
+  font-size: 12px;
+  margin-bottom: 4px;
+  display: block;
+  color: #aaa;
+}
+.weights-row input[type="number"] {
+  width: 100%;
+}
+
+.popup-box .btn {
+  margin-top: 1rem;
+  width: 100%;
+}
+.color-indicators-container {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    padding: 8px 0;
+    font-size: 12px;
+}
+.color-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.color-square {
+    width: 14px;
+    height: 14px;
+    border: 1px solid #666;
+    border-radius: 2px;
+    display: inline-block;
+}
+
+/* RESPONSIVE */
+@media (max-width: 1200px) {
+  .main-panel {
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+  }
+  .sidebar,
+  .chat-box {
+    width: 90%;
+    max-width: 340px;
+    height: auto;
+  }
+  .canvas-frame {
+    width: min(90vw, var(--canvas-width));
+  }
+}

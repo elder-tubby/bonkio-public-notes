@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Earcut Test</title>
+</head>
+<body>
+    <h1>Earcut Loading Test</h1>
+    <pre id="result"></pre>
+    
+    <script src="earcut.min.js"></script>
+    <script>
+        const result = document.getElementById('result');
+        let output = '';
+        
+        // Test if earcut is loaded
+        output += 'window.earcut exists: ' + (typeof window.earcut !== 'undefined') + '\n';
+        output += 'window.earcut.default exists: ' + (typeof window.earcut?.default !== 'undefined') + '\n';
+        output += 'window.earcut.default is function: ' + (typeof window.earcut?.default === 'function') + '\n\n';
+        
+        // Test earcut with a simple triangle
+        if (typeof window.earcut?.default === 'function') {
+            try {
+                const vertices = [0, 0, 100, 0, 50, 100];
+                const indices = window.earcut.default(vertices);
+                output += 'Test triangle indices: ' + JSON.stringify(indices) + '\n';
+                output += 'SUCCESS! Earcut is working correctly.\n';
+            } catch (e) {
+                output += 'ERROR: ' + e.message + '\n';
+            }
+        } else {
+            output += 'ERROR: earcut.default is not a function\n';
+        }
+        
+        result.textContent = output;
+    </script>
+</body>
+</html>

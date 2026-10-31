@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Parkour Map Editor</title>
+    <link rel="icon" href="data:," />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+  </head>
+
+  <body>
+    <div id="homeScreen" class="home-screen">
+      <div class="column">
+        <div class="box info-box">
+          <h2>Welcome!</h2>
+          <ul>
+            <li>Create and edit bonk.io parkour maps on your own canvas.</li>
+            <li>Your draft is saved automatically in this browser.</li>
+            <li>
+              To copy the final map, use the
+              <a
+                class="info-link"
+                href="https://github.com/elder-tubby/bonkio-parkour-generator/blob/main/browser-script/pkrGenerator.js"
+                target="_blank"
+              >
+                pkrGenerator mod <span>&#x2197;</span>
+              </a>
+              .
+            </li>
+            <li>
+              The map data is also compatible with the
+              <a
+                class="info-link"
+                href="https://www.youtube.com/playlist?list=PLo8kHyDWLzW3DWnnWw2IHE1C17TSGQWiv"
+                target="_blank"
+              >
+                parkour generator app <span>&#x2197;</span>
+              </a>
+              .
+            </li>
+              <li>
+              All code is available on elder-tubby's
+              <a
+                class="info-link"
+                href="https://github.com/elder-tubby"
+                target="_blank"
+              >
+                GitHub <span>&#x2197;</span>
+              </a>
+              .
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="column">
+        <div class="box controls-box">
+          <h3>Ready to create?</h3>
+          <p>Open the editor to draw, adjust, and export your map.</p>
+          <button id="startDrawingBtn" class="btn">Open editor</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="canvasWrapper" class="hidden">
+      <div class="main-panel">
+        <div class="sidebar">
+          <div class="box">
+            <h3>Map tools</h3>
+            <div class="copy-map-row">
+              <button id="copyMapBtn" class="btn btn-small">
+                Copy map (CTRL C)
+              </button>
+            </div>
+            <div class="copy-map-row">
+              <button id="autoGenerateBtn" class="btn btn-small">
+                Auto-generate (G)
+              </button>
+            </div>
+          </div>
+          <div class="box">
+            <h3>Hotkeys</h3>
+            <ul class="tips-list">
+              <li>
+                <strong>SHIFT + MOUSE</strong>
+                <span class="hotkey-desc">– Line selection</span>
+              </li>
+              <li>
+                <strong>M</strong>
+                <span class="hotkey-desc">– Toggle polygon/line</span>
+              </li>
+              <li>
+                <strong>B</strong> <span class="hotkey-desc">– Bouncy</span>
+              </li>
+              <li>
+                <strong>D</strong> <span class="hotkey-desc">- Death</span>
+              </li>
+              <li>
+                <strong>N</strong> <span class="hotkey-desc">– Non-bouncy</span>
+              </li>
+              <li>
+                <strong>X</strong> <span class="hotkey-desc">– Delete</span>
+              </li>
+              <li>
+                <strong>Arrow keys</strong>
+                <span class="hotkey-desc">– Move line</span>
+              </li>
+              <li>
+                <strong>CTRL Z</strong>
+                <span class="hotkey-desc">– Delete last line</span>
+              </li>
+              <li>
+                <strong>CTRL A</strong>
+                <span class="hotkey-desc">– Select all</span>
+              </li>
+              <li>
+                <strong>CTRL C</strong>
+                <span class="hotkey-desc">– Copy map</span>
+              </li>
+              <li>
+                <strong>CTRL V</strong>
+                <span class="hotkey-desc">– Paste map</span>
+              </li>
+              <li>
+                <strong>CTRL D</strong>
+                <span class="hotkey-desc">– Drawing mode</span>
+              </li>
+              <li>
+                <strong>[ ]</strong>
+                <span class="hotkey-desc">– Move to back/front</span>
+              </li>
+              <li>
+                <strong>G</strong>
+                <span class="hotkey-desc">– Auto-generate pop-up</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="canvas-area">
+          <div class="canvas-frame">
+            <canvas id="canvas" width="730" height="500"></canvas>
+            <div class="control-box"></div>
+          </div>
+        </div>
+
+        <div class="options-panel">
+          <h3>More Options</h3>
+          <div id="moreOptionsTabContent"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="autoGeneratePopup" class="popup-overlay hidden" aria-hidden="true">
+      <div class="popup-box" style="width: 300px; text-align: center;">
+        <button id="agpCloseBtn" class="popup-close" aria-label="Close">×</button>
+        <h2 style="margin-bottom: 10px;">Simulation Tools</h2>
+        <p style="margin-bottom: 20px; font-size: 14px; color: #ccc;">Test your map with interactive physics.</p>
+
+        <div class="popup-actions">
+          <button id="agpAiSimBtn" type="button" class="btn" style="width: 100%; background-color: #3b82f6; color: white; font-weight: bold; height: 40px;" title="Start user controlled simulation">
+            Toggle Simulation
+          </button>
+        </div>
+      </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/poly-decomp@0.3.0/build/decomp.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/dist/polygon-clipping.umd.min.js"></script>
+    <script src="earcut.min.js"></script>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

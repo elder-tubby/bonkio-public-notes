@@ -1,0 +1,1165 @@
+// public/admin.js
+import * as Network from "./network.js";
+import { showToast } from "./utils-client.js";
+
+class AdminUI {
+  constructor() {
+    this.isLoggedIn = false;
+    this.gameActive = false;
+    this.players = [];
+    this.elems = {};
+  }
+
+  init() {
+    const container = document.createElement("div");
+    container.id = "adminPanel";
+    container.className = "admin-panel";
+    container.innerHTML = `
+      <button id="adminPanelToggle" class="admin-panel-toggle">🔒</button>
+      <div id="adminPanelContent" class="admin-panel-content hidden"></div>
+    `;
+    document.body.appendChild(container);
+
+    this.elems.panel = container;
+    this.elems.toggleBtn = document.getElementById("adminPanelToggle");
+    this.elems.content = document.getElementById("adminPanelContent");
+
+    this.elems.toggleBtn.addEventListener("click", () => this.togglePanel());
+  }
+
+  togglePanel() {
+    const isHidden = this.elems.content.classList.toggle("hidden");
+    if (!isHidden && !this.isLoggedIn) {
+      this.renderLogin();
+    }
+  }
+
+  handleStateUpdate({ hasLobbyPassword, gameActive, players }) {
+    if (typeof gameActive === "boolean") this.gameActive = gameActive;
+    if (Array.isArray(players)) this.players = players;
+
+    // If panel is open and we're logged in, re-render controls with fresh data
+    const panelOpen = !this.elems.content.classList.contains("hidden");
+    if (panelOpen && this.isLoggedIn) {
+      this.renderControls({ hasLobbyPassword });
+    }
+  }
+
+  handleLoginSuccess(state) {
+    this.isLoggedIn = true;
+    this.handleStateUpdate(state); // Renders the controls
+  }
+
+  renderLogin() {
+    this.elems.content.innerHTML = `
+      <div class="admin-login-form">
+        <h4>Admin Access</h4>
+        <input type="password" id="adminPasswordInput" placeholder="Admin Password"  autocomplete="off"/>
+        <button id="adminLoginBtn" class="btn btn-small">Login</button>
+      </div>
+    `;
+
+    document.getElementById("adminLoginBtn").addEventListener("click", () => {
+      const pass = document.getElementById("adminPasswordInput").value;
+      Network.adminLogin(pass);
+    });
+    document
+      .getElementById("adminPasswordInput")
+      .addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          document.getElementById("adminLoginBtn").click();
+        }
+      });
+  }
+
+  renderControls({ hasLobbyPassword }) {
+    const playersHTML = this.players
+      .map(
+        (p) => `
+        <li class="admin-player-item">
+          <span>${p.name}</span>
+          <div class="admin-player-actions">
+            <button class="btn btn-small" data-kick-id="${p.id}">Kick</button>
+          </div>
+        </li>
+      `,
+      )
+      .join("");
+
+    this.elems.content.innerHTML = `
+      <div class="admin-section">
+        <h4>Lobby Password</h4>
+        <input type="text" id="lobbyPasswordInput" placeholder="New pass (leave blank to remove)" autocomplete="off"/>
+        <button id="setLobbyPassBtn" class="btn btn-small">Set/Remove</button>
+      </div>
+      <div class="admin-section">
+        <h4>Players (${this.players.length})</h4>
+        <ul class="admin-player-list">${playersHTML}</ul>
+      </div>
+      ${
+        this.gameActive
+          ? `
+      <div class="admin-section">
+        <h4>Game Management</h4>
+        <button id="adminEndGameBtn" class="btn btn-small">Force End Game</button>
+      </div>
+      `
+          : ""
+      }
+    `;
+
+    // Bind events
+    document.getElementById("setLobbyPassBtn").addEventListener("click", () => {
+      const newPass = document.getElementById("lobbyPasswordInput").value;
+      Network.adminSetPassword(newPass);
+      showToast(newPass ? "Lobby password set." : "Lobby password removed.");
+      document.getElementById("lobbyPasswordInput").value = "";
+    });
+
+    this.elems.content.querySelectorAll("[data-kick-id]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const id = e.target.dataset.kickId;
+        if (confirm("Are you sure you want to kick this player?")) {
+          Network.adminKickPlayer(id);
+        }
+      });
+    });
+
+    if (this.gameActive) {
+      document
+        .getElementById("adminEndGameBtn")
+        .addEventListener("click", () => {
+          if (
+            confirm(
+              "Are you sure you want to end the current game for everyone?",
+            )
+          ) {
+            Network.adminEndGame();
+          }
+        });
+    }
+  }
+}
+
+export default new AdminUI();
+
+
+// public/config-client.js
+// This file centralizes configuration for UI elements, like popup limits.
+
+export const AUTO_GEN_LIMITS = {
+  maxPolygons: { min: 1, max: 200, default: 50 },
+  minDistance: { min: 0, max: 200, default: 10 },
+  maxVertices: { min: 3, max: 30, default: 12 },
+  minArea: { min: 200, max: 50000, default: 8000 },
+  maxArea: { min: 300, max: 50000, default: 30000 },
+  skipChance: { min: 0, max: 1, default: 0, step: 0.1 },
+  tunnelPadding: { min: 10, max: 100, default: 30 },
+};
+
+// public/events.js
+export const EVENTS = {
+  // Server -> Client
+  CONNECT_WITH_ID: "connectWithId",
+  LOBBY_FULL: "lobbyFull",
+  LOBBY_NAME_TAKEN: "lobbyNameTaken",
+  GAME_IN_PROGRESS: "gameInProgress",
+  LOBBY_UPDATE: "lobbyUpdate",
+  START_GAME: "startGame",
+  GAME_SNAPSHOT: "gameSnapshot",
+  END_GAME: "endGame",
+  GAME_UPDATE: "gameUpdate",
+
+  SPAWN_CIRCLE_UPDATED: "spawnCircleUpdated",
+  CAP_ZONE_UPDATED: "capZoneUpdated",
+  MAP_SIZE_UPDATED: "mapSizeUpdated",
+  CLEAR_CHAT: "clearChat",
+  CHAT_MESSAGE: "chatMessage",
+  CHAT_ERROR: "chatError",
+  OBJECT_CREATED: "objectCreated", // Replaces LINE_CREATED
+  OBJECTS_CREATED_BATCH: "objectsCreatedBatch", // Replaces POLYGONS_CREATED_BATCH
+  UPDATE_OBJECTS_BATCH: "updateObjectsBatch",
+  OBJECT_UPDATED: "objectUpdated", // Replaces LINE_UPDATED, POLYGON_UPDATED
+  OBJECT_DELETED: "objectDeleted", // Replaces LINE_DELETED, POLYGON_DELETED
+  OBJECTS_REORDERED: "objectsReordered",
+  COLORS_UPDATED: "colorsUpdated",
+
+  // Client -> Server
+  JOIN_LOBBY: "joinLobby",
+  SET_READY: "setReady",
+  VOTE_FINISH: "voteFinish",
+  SEND_CHAT: "sendChat",
+  CREATE_OBJECT: "createObject", // Replaces CREATE_LINE
+  CREATE_OBJECTS_BATCH: "createObjectsBatch", // Replaces CREATE_POLYGONS_BATCH
+  DELETE_OBJECT: "deleteObject", // Replaces DELETE_LINE, DELETE_POLYGON
+  REORDER_OBJECTS: "reorderObject", // Replaces REORDER_LINE, REORDER_POLYGON
+  UPDATE_OBJECT: "updateObject",
+  SET_SPAWN_CIRCLE: "setSpawnCircle",
+  SET_CAP_ZONE: "setCapZone",
+  SET_MAP_SIZE: "setMapSize",
+  PASTE_LINES: "pasteLines",
+
+  ADMIN_LOGIN: "admin:login",
+  ADMIN_LOGIN_SUCCESS: "admin:login_success",
+  ADMIN_LOGIN_FAIL: "admin:login_fail",
+  ADMIN_STATE_UPDATE: "admin:state_update",
+  ADMIN_KICK_PLAYER: "admin:kick_player",
+  ADMIN_SET_PASSWORD: "admin:set_password",
+  ADMIN_END_GAME: "admin:end_game",
+  KICKED: "kicked",
+  LOBBY_JOIN_FAIL: "lobby:join_fail",
+  CHANGE_COLORS: "changeColors",
+  CHANGE_SPECIFIC_COLOR: "changeSpecificColor",
+  TOGGLE_SHADES: "toggleShades",
+};
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Parkour Collab</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+  </head>
+
+  <body>
+    <div id="homeScreen" class="home-screen">
+      <div class="column">
+        <div class="box info-box">
+          <h2>Welcome!</h2>
+          <ul>
+            <li>This is an app to collaborate on bonk.io parkour maps.</li>
+            <li>Draw lines on a shared canvas.</li>
+            <li>
+              To copy the final map, use the
+              <a
+                class="info-link"
+                href="https://github.com/elder-tubby/bonkio-parkour-generator/blob/main/browser-script/pkrGenerator.js"
+                target="_blank"
+              >
+                pkrGenerator mod <span>&#x2197;</span>
+              </a>
+              .
+            </li>
+            <li>
+              The map data is also compatible with the
+              <a
+                class="info-link"
+                href="https://www.youtube.com/playlist?list=PLo8kHyDWLzW3DWnnWw2IHE1C17TSGQWiv"
+                target="_blank"
+              >
+                parkour generator app <span>&#x2197;</span>
+              </a>
+              .
+            </li>
+            <li>
+              All code is available on elder-tubby's
+              <a
+                class="info-link"
+                href="https://github.com/elder-tubby"
+                target="_blank"
+              >
+                GitHub <span>&#x2197;</span>
+              </a>
+              .
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="column">
+        <div class="box controls-box">
+          <input
+            type="text"
+            id="usernameInput"
+            placeholder="Your username"
+            autocomplete="off"
+            maxlength="26"
+          />
+          <button id="joinBtn" class="btn">Set Name</button>
+          <div class="inline-check">
+            <input type="checkbox" id="readyCheckbox" />
+            <label for="readyCheckbox">Ready</label>
+          </div>
+          <p id="lobbyMessage" class="lobby-message">
+            Drawing will start when 1 player is ready.
+          </p>
+        </div>
+
+        <div class="box">
+          <h3>Lobby Players</h3>
+          <ul id="readyList" class="lobby-list"></ul>
+        </div>
+      </div>
+    </div>
+
+    <div id="canvasWrapper" class="hidden">
+      <div class="main-panel">
+        <div class="sidebar">
+          <div class="box">
+            <h3>Players</h3>
+            <ul class="player-list" id="playerList"></ul>
+          </div>
+          <div class="box">
+            <div class="votes-grid">
+              <label for="voteCheckbox">Vote to finish</label>
+              <input type="checkbox" id="voteCheckbox" />
+              <div id="voteStatus">0 / 0 voted</div>
+              <div></div>
+              <label for="hideUsernamesCheckbox">Hide tags (H)</label>
+              <input type="checkbox" id="hideUsernamesCheckbox" />
+            </div>
+            <div class="copy-map-row">
+              <button id="copyMapBtn" class="btn btn-small">
+                Copy map (CTRL C)
+              </button>
+            </div>
+            <div class="copy-map-row">
+              <button id="autoGenerateBtn" class="btn btn-small">
+                Auto-generate (G)
+              </button>
+            </div>
+          </div>
+          <div class="box">
+            <h3>Hotkeys</h3>
+            <ul class="tips-list">
+              <li>
+                <strong>SHIFT + MOUSE</strong>
+                <span class="hotkey-desc">– Line selection</span>
+              </li>
+              <li>
+                <strong>M</strong>
+                <span class="hotkey-desc">– Toggle polygon/line</span>
+              </li>
+              <li>
+                <strong>B</strong> <span class="hotkey-desc">– Bouncy</span>
+              </li>
+              <li>
+                <strong>D</strong> <span class="hotkey-desc">- Death</span>
+              </li>
+              <li>
+                <strong>N</strong> <span class="hotkey-desc">– Non-bouncy</span>
+              </li>
+              <li>
+                <strong>X</strong> <span class="hotkey-desc">– Delete</span>
+              </li>
+              <li>
+                <strong>Arrow keys</strong>
+                <span class="hotkey-desc">– Move line</span>
+              </li>
+              <li>
+                <strong>CTRL Z</strong>
+                <span class="hotkey-desc">– Delete last line</span>
+              </li>
+              <li>
+                <strong>CTRL A</strong>
+                <span class="hotkey-desc">– Select all</span>
+              </li>
+              <li>
+                <strong>CTRL C</strong>
+                <span class="hotkey-desc">– Copy map</span>
+              </li>
+              <li>
+                <strong>CTRL V</strong>
+                <span class="hotkey-desc">– Paste map</span>
+              </li>
+              <li>
+                <strong>CTRL D</strong>
+                <span class="hotkey-desc">– Drawing mode</span>
+              </li>
+              <li>
+                <strong>[ ]</strong>
+                <span class="hotkey-desc">– Move to back/front</span>
+              </li>
+              <li>
+                <strong>G</strong>
+                <span class="hotkey-desc">– Auto-generate pop-up</span>
+              </li>
+            </ul>
+          </div>
+          <div class="box hidden" id="adminPanel">
+              </div>
+          </div>
+        </div>
+
+        <div class="canvas-area">
+          <div class="canvas-frame">
+            <canvas id="canvas" width="730" height="500"></canvas>
+            <div class="control-box"></div>
+          </div>
+        </div>
+
+        <div class="chat-box">
+          <h3>Chat</h3>
+          <div id="chatMessages"></div>
+          <input
+            type="text"
+            id="chatInput"
+            placeholder="Press Enter to start typing..."
+            autocomplete="off"
+          />
+          <div class="chat-actions">
+            <button id="chatSendBtn" class="btn btn-small">Send</button>
+            <button
+              id="chatAudioBtn"
+              class="btn btn-icon"
+              title="Toggle chat sound"
+            >
+              🔊
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="gameEndPopup" class="popup-overlay hidden" aria-hidden="true">
+      <div class="popup-box">
+        <button id="popup-close" class="popup-close" aria-label="Close">
+          ×
+        </button>
+        <h2>Game ended</h2>
+        <p>Would you like to copy map data?</p>
+        <div class="popup-actions">
+          <button id="copyLineInfoBtn" class="btn">Copy map data</button>
+        </div>
+      </div>
+    </div>
+    <div id="autoGeneratePopup" class="popup-overlay hidden" aria-hidden="true">
+      <div class="popup-box" style="width: 300px; text-align: center;">
+        <button id="agpCloseBtn" class="popup-close" aria-label="Close">×</button>
+        <h2 style="margin-bottom: 10px;">Simulation Tools</h2>
+        <p style="margin-bottom: 20px; font-size: 14px; color: #ccc;">Test your map with interactive physics.</p>
+
+        <div class="popup-actions">
+          <button id="agpAiSimBtn" type="button" class="btn" style="width: 100%; background-color: #3b82f6; color: white; font-weight: bold; height: 40px;" title="Start user controlled simulation">
+            Toggle Simulation
+          </button>
+        </div>
+      </div>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/poly-decomp@0.3.0/build/decomp.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/dist/polygon-clipping.umd.min.js"></script>
+    <script src="earcut.min.js"></script>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
+
+// network.js
+
+import { EVENTS } from "./events.js";
+
+const socket = window.io();
+
+function record() {
+  if (window.saveMapSnapshot) window.saveMapSnapshot();
+}
+
+// ---- EMITTERS (Client -> Server) ----
+
+export function setReady(isReady) {
+  socket.emit(EVENTS.SET_READY, isReady);
+}
+
+export function voteFinish(vote) {
+  socket.emit(EVENTS.VOTE_FINISH, vote);
+}
+
+export function sendChat(message) {
+  socket.emit(EVENTS.SEND_CHAT, message);
+}
+
+// Unified Objects
+export function createObject(objectData) {
+  record();
+  socket.emit(EVENTS.CREATE_OBJECT, objectData);
+}
+
+export function createObjectsBatch(batchData) {
+  record();
+  socket.emit(EVENTS.CREATE_OBJECTS_BATCH, batchData);
+}
+
+export function updateObjectsBatch(payloads) {
+  record();
+  socket.emit(EVENTS.UPDATE_OBJECTS_BATCH, payloads); 
+}
+
+export function deleteObject(objectId) {
+  record();
+  socket.emit(EVENTS.DELETE_OBJECT, objectId);
+}
+
+export function reorderObjects({ ids, toBack }) {
+  record();
+  socket.emit(EVENTS.REORDER_OBJECTS, { ids, toBack });
+}
+
+export function updateObject(payload) {
+  record();
+  socket.emit(EVENTS.UPDATE_OBJECT, payload);
+}
+
+export function pasteLines(pasteData) {
+  record();
+  socket.emit(EVENTS.PASTE_LINES, pasteData);
+}
+
+// Map Objects
+export function setSpawnCircle(data) {
+  if (window.saveMapSnapshot) window.saveMapSnapshot();
+  socket.emit(EVENTS.SET_SPAWN_CIRCLE, data);
+}
+
+export function setCapZone(data) {
+  if (window.saveMapSnapshot) window.saveMapSnapshot();
+  socket.emit(EVENTS.SET_CAP_ZONE, data);
+}
+
+export function setMapSize(size) {
+  socket.emit(EVENTS.SET_MAP_SIZE, size);
+}
+
+// Admin Emitters
+export function adminLogin(password) {
+  socket.emit(EVENTS.ADMIN_LOGIN, password);
+}
+
+export function adminKickPlayer(playerId) {
+  socket.emit(EVENTS.ADMIN_KICK_PLAYER, playerId);
+}
+
+export function adminSetPassword(newPassword) {
+  socket.emit(EVENTS.ADMIN_SET_PASSWORD, newPassword);
+}
+
+export function adminEndGame() {
+  socket.emit(EVENTS.ADMIN_END_GAME);
+}
+
+// Modified Emitters
+export function joinLobby(name, password) {
+  socket.emit(EVENTS.JOIN_LOBBY, { name, password });
+}
+
+export function changeColors() {
+  socket.emit(EVENTS.CHANGE_COLORS);
+}
+
+// ---- LISTENERS (Server -> Client) ----
+
+export function onConnectWithId(cb) {
+  socket.on(EVENTS.CONNECT_WITH_ID, cb);
+}
+
+export function onLobbyFull(cb) {
+  socket.on(EVENTS.LOBBY_FULL, cb);
+}
+
+export function onLobbyNameTaken(cb) {
+  socket.on(EVENTS.LOBBY_NAME_TAKEN, cb);
+}
+
+export function onGameInProgress(cb) {
+  socket.on(EVENTS.GAME_IN_PROGRESS, cb);
+}
+
+export function onLobbyUpdate(cb) {
+  socket.on(EVENTS.LOBBY_UPDATE, cb);
+}
+
+export function onStartGame(cb) {
+  socket.on(EVENTS.START_GAME, cb);
+}
+
+export function onGameSnapshot(cb) {
+  socket.on(EVENTS.GAME_SNAPSHOT, cb);
+}
+
+export function onEndGame(cb) {
+  socket.on(EVENTS.END_GAME, cb);
+}
+
+export function onGameUpdate(cb) {
+  socket.on(EVENTS.GAME_UPDATE, cb);
+}
+
+// Unified Objects
+export function onObjectCreated(cb) {
+  socket.on(EVENTS.OBJECT_CREATED, cb);
+}
+
+export function onObjectsCreatedBatch(cb) {
+  socket.on(EVENTS.OBJECTS_CREATED_BATCH, cb);
+}
+
+export function onObjectUpdated(cb) {
+  socket.on(EVENTS.OBJECT_UPDATED, cb);
+}
+
+export function onObjectDeleted(cb) {
+  socket.on(EVENTS.OBJECT_DELETED, cb);
+}
+
+export function onObjectsReordered(cb) {
+  socket.on(EVENTS.OBJECTS_REORDERED, cb);
+}
+
+// Map Objects
+export function onSpawnCircleUpdate(cb) {
+  socket.on(EVENTS.SPAWN_CIRCLE_UPDATED, cb);
+}
+
+export function onCapZoneUpdate(cb) {
+  socket.on(EVENTS.CAP_ZONE_UPDATED, cb);
+}
+
+export function onMapSizeUpdate(cb) {
+  socket.on(EVENTS.MAP_SIZE_UPDATED, cb);
+}
+
+// Chat
+export function onChatMessage(cb) {
+  socket.on(EVENTS.CHAT_MESSAGE, cb);
+}
+
+export function onChatError(cb) {
+  socket.on(EVENTS.CHAT_ERROR, cb);
+}
+
+export function onClearChat(cb) {
+  socket.on(EVENTS.CLEAR_CHAT, cb);
+}
+
+// Admin Listeners
+export function onKicked(cb) {
+  socket.on(EVENTS.KICKED, cb);
+}
+
+export function onLobbyJoinFail(cb) {
+  socket.on(EVENTS.LOBBY_JOIN_FAIL, cb);
+}
+
+export function onAdminStateUpdate(cb) {
+  socket.on(EVENTS.ADMIN_STATE_UPDATE, cb);
+}
+
+export function onAdminLoginSuccess(cb) {
+  socket.on(EVENTS.ADMIN_LOGIN_SUCCESS, cb);
+}
+
+export function onAdminLoginFail(cb) {
+  socket.on(EVENTS.ADMIN_LOGIN_FAIL, cb);
+}
+export function onColorsUpdated(cb) {
+  socket.on(EVENTS.COLORS_UPDATED, cb);
+}
+export function changeSpecificColor(type) {
+  socket.emit(EVENTS.CHANGE_SPECIFIC_COLOR, type);
+}
+export function toggleShades(useShades) {
+  socket.emit(EVENTS.TOGGLE_SHADES, useShades);
+}
+
+export { socket };
+
+// state.js. A tiny event emitter + central state store
+
+class Emitter {
+  constructor() {
+    this.listeners = new Set();
+  }
+  on(fn) {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+  emit(...args) {
+    this.listeners.forEach((fn) => fn(...args));
+  }
+}
+
+class State {
+  constructor() {
+    this._state = {
+      socketId: null,
+      playerId: null,
+      username: "",
+      colors: {
+        background: "rgb(0, 0, 0)",
+        none: "rgb(255, 255, 255)",
+        bouncy: "rgb(167, 196, 190)",
+        death: "rgb(255, 0, 0)",
+      },
+
+      gameActive: false,
+      players: [],
+
+      objects: [],
+      selectedObjectIds: [],
+      draggingPreview: null,
+      selectionBox: null,
+
+      // NEW: Drawing mode state
+      drawingMode: "line", // can be 'line', 'poly', or 'select'
+
+      // State for drawing new shapes
+      drawingShape: null, // { type: 'line', ... } or { type: 'poly', ... }
+
+      // Canvas interaction state
+      mouse: { x: 0, y: 0 },
+      startPt: null,
+
+      // Game object state
+      spawnCircle: { x: 0, y: 0, diameter: 18 },
+      capZone: { x: null, y: null, width: 30, height: 18.5 },
+
+      // Settings
+      hideUsernames: false,
+      isNotificationSoundOn: true,
+      mapSize: 9,
+      generatedPath: null,
+      isDrawingPath: false, // <-- ADD THIS
+      simulationPreview: null, // <-- ADD THIS
+      cameraMode: false,
+      cameraOffset: { x: 0, y: 0 },
+      cameraZoom: 1,
+    };
+    this.emitter = new Emitter();
+  }
+
+  get(key) {
+    return this._state[key];
+  }
+
+  set(key, value) {
+    // Deprecated: Handle single vs multiple selection seamlessly
+    if (key === "selectedObjectId") {
+      this.set("selectedObjectIds", value ? [value] : []);
+      return;
+    }
+    // Deprecated: isDrawingPoly is now managed by drawingMode
+    if (key === "isDrawingPoly") {
+      this.set("drawingMode", value ? "poly" : "line");
+      return;
+    }
+    this._state[key] = value;
+    this.emitter.emit(key, value);
+  }
+
+  // --- Helpers for multi-selection ---
+  addSelectedObjectId(id) {
+    if (!this._state.selectedObjectIds.includes(id)) {
+      this.set("selectedObjectIds", [...this._state.selectedObjectIds, id]);
+    }
+  }
+
+  removeSelectedObjectId(id) {
+    this.set(
+      "selectedObjectIds",
+      this._state.selectedObjectIds.filter((oid) => oid !== id),
+    );
+  }
+
+  clearSelectedObjects() {
+    this.set("selectedObjectIds", []);
+  }
+
+  isSelected(id) {
+    return this._state.selectedObjectIds.includes(id);
+  }
+
+  onChange(fn) {
+    return this.emitter.on(fn);
+  }
+}
+
+export default new State();
+
+/**
+ * app.js - Client-Side Orchestrator
+ */
+import UI from "./ui.js";
+import State from "./state.js";
+import Canvas from "./canvas.js";
+import * as Network from "./network.js";
+import AdminUI from "./admin.js";
+import { bindUIEvents } from "./handlers.js";
+import { showToast, getSpawnDiameter, MapHistory } from "./utils-client.js";
+
+window.State = State;
+window.Network = Network;
+
+// Version Tracking Hooks
+MapHistory.init(State, Network);
+window.saveMapSnapshot = () => MapHistory.debouncedSave();
+window.undoMap = () => MapHistory.undo();
+window.redoMap = () => MapHistory.redo();
+
+function main() {
+  UI.init();
+  AdminUI.init(); // Add this
+  bindUIEvents();
+  bindNetworkEvents();
+  watchStateChanges();
+  Canvas.draw();
+}
+
+// Single source of truth: if this is not null, a notification session is active.
+let notificationInterval = null;
+const originalTitle = document.title;
+const notificationTitle = "💬 New Message!";
+
+const notificationSound = new Audio("/sounds/chat.wav");
+notificationSound.preload = "auto";
+notificationSound.volume = 0.5;
+
+/**
+ * Play a short join sound if any NEW player (other than this client) appears
+ * in `newPlayers` that wasn't in `prevPlayers`.
+ */
+function playJoinSoundIfNew(prevPlayers = [], newPlayers = []) {
+  try {
+    if (!State.get("isNotificationSoundOn")) {
+      return;
+    }
+    const prevIds = new Set((prevPlayers || []).map((p) => p.id));
+    const myId = State.get("socketId");
+    const newJoin = (newPlayers || []).some(
+      (p) => p?.id && !prevIds.has(p.id) && p.id !== myId,
+    );
+    if (!newJoin) return;
+    notificationSound.currentTime = 0;
+    notificationSound.play().catch(() => {
+      /* ignore play failures (auto-play policy, etc.) */
+    });
+  } catch (e) {
+    console.error("playJoinSoundIfNew error:", e);
+  }
+}
+
+function bindNetworkEvents() {
+  Network.onConnectWithId((id) => State.set("socketId", id));
+
+  Network.onLobbyFull(() => showToast("Sorry, the lobby is full.", true));
+  Network.onLobbyNameTaken(() => showToast("Name already taken!", true));
+
+  Network.onLobbyUpdate(({ players, gameActive }) => {
+    const prevPlayers = State.get("players") || [];
+    playJoinSoundIfNew(prevPlayers, players || []);
+
+    State.set("players", players || []);
+    UI.updateLobby(players || []);
+    const me = (players || []).find((p) => p.id === State.get("socketId"));
+    if (UI.elems.readyCheckbox) UI.elems.readyCheckbox.disabled = !me;
+    State.set("gameActive", !!gameActive);
+  });
+
+  Network.onGameInProgress(() =>
+    UI.showLobbyMessage("Game in progress. Set 'Ready' to join."),
+  );
+  Network.onStartGame(initializeGameView);
+  Network.onGameSnapshot(initializeGameView);
+  Network.onGameUpdate(({ players, votes, totalParticipants }) => {
+    const prevPlayers = State.get("players") || [];
+    playJoinSoundIfNew(prevPlayers, players || []);
+
+    UI.updatePlayers(players || []);
+    UI.setVote(votes ?? 0, totalParticipants ?? 0);
+  });
+  Network.onEndGame(({ reason }) => {
+    State.set("gameActive", false);
+    if (UI.elems && UI.elems.readyCheckbox) {
+      UI.elems.readyCheckbox.checked = false;
+    }
+    UI.hide("canvasWrap");
+    UI.show("home");
+    UI.setEndReason(
+      reason === "voted" ? "All players voted to end." : "All players left.",
+    );
+    UI.show("gameEndPopup");
+    UI.showLobbyMessage("Drawing will start when 2 players are ready.");
+  });
+  Network.onObjectCreated((newObject) => {
+    MapHistory.handleNewObjects([newObject]);
+    State.set("objects", [...State.get("objects"), newObject]);
+    if (newObject.playerId === State.get("socketId")) {
+      State.set("selectedObjectIds", [newObject.id]);
+    }
+  });
+
+  Network.onObjectsCreatedBatch((newObjects) => {
+    MapHistory.handleNewObjects(newObjects);
+    if (Array.isArray(newObjects) && newObjects.length > 0) {
+      State.set("objects", [...State.get("objects"), ...newObjects]);
+
+      const myId = State.get("socketId");
+      const myNewObjectIds = newObjects
+        .filter((o) => o.playerId === myId)
+        .map((o) => o.id);
+
+      if (myNewObjectIds.length > 0) {
+        State.set("selectedObjectIds", myNewObjectIds);
+      }
+    }
+  });
+
+  // ---------- app.js (notification block) ----------
+
+  function startTitleFlashing() {
+    // This function is now simpler because the guard is in the caller.
+    let showOriginal = false;
+    notificationInterval = setInterval(() => {
+      document.title = showOriginal ? originalTitle : notificationTitle;
+      showOriginal = !showOriginal;
+    }, 1000);
+  }
+
+  function stopTitleFlashingAndRestoreTitle() {
+    if (notificationInterval) {
+      clearInterval(notificationInterval);
+      notificationInterval = null;
+    }
+    document.title = originalTitle;
+  }
+
+  function startNotificationIfHidden() {
+    // 1. Only run if the tab is hidden AND a notification is not already active.
+    //    This check now prevents all race conditions and duplicate sounds.
+    if (!document.hidden || notificationInterval) {
+      return;
+    }
+
+    // 2. Start the notification session. This immediately sets `notificationInterval`,
+    //    preventing this function from running again until the user returns.
+    startTitleFlashing();
+
+    // 3. Check if sound is enabled. With simpler logic, this check now works reliably.
+    if (!State.get("isNotificationSoundOn")) {
+      return;
+    }
+
+    // 4. Play the sound.
+    try {
+      notificationSound.currentTime = 0; // Rewind the sound to the beginning
+      notificationSound.play().catch((err) => {
+        console.error("Notification audio play failed:", err);
+      });
+    } catch (e) {
+      console.error("Error trying to play notification sound:", e);
+    }
+  }
+
+  // This handler remains unchanged but will now behave correctly.
+  Network.onChatMessage((msg) => {
+    UI.appendChat(msg);
+    startNotificationIfHidden();
+  });
+
+  function resetNotificationsForNextSession() {
+    // When the user returns, stop the flashing and sound to reset the state.
+    stopTitleFlashingAndRestoreTitle();
+    try {
+      notificationSound.pause();
+      notificationSound.currentTime = 0;
+    } catch (e) {
+      // Ignore errors, e.g., if the sound was never played.
+    }
+  }
+
+  // These event listeners also remain unchanged.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      resetNotificationsForNextSession();
+    }
+  });
+  window.addEventListener("focus", resetNotificationsForNextSession);
+
+  Network.onObjectUpdated((updatedObject) => {
+    const objects = State.get("objects").map((o) =>
+      o.id === updatedObject.id ? updatedObject : o,
+    );
+    State.set("objects", objects);
+    // Only update editor if this is the *only* selected object
+    const selectedIds = State.get("selectedObjectIds");
+    if (selectedIds.length === 1 && selectedIds[0] === updatedObject.id) {
+      if (updatedObject.type === "line")
+        UI.updateLineEditorValues(updatedObject);
+      if (updatedObject.type === "poly")
+        UI.updatePolygonEditorValues(updatedObject);
+      if (updatedObject.type === "circle")
+        UI.updateCircleEditorValues(updatedObject);
+    }
+  });
+
+  Network.onObjectDeleted(({ id }) => {
+    State.set(
+      "objects",
+      State.get("objects").filter((o) => o.id !== id),
+    );
+    State.removeSelectedObjectId(id);
+  });
+
+  Network.onObjectsReordered((reorderedObjects) => {
+    if (Array.isArray(reorderedObjects)) {
+      reorderedObjects.forEach((obj) => {
+        if (obj.type === "poly") {
+          console.log("Poly object:", obj, "scale:", obj.scale);
+        } else {
+          console.log("Object:", obj);
+        }
+      });
+    }
+    State.set("objects", reorderedObjects || []);
+  });
+
+  Network.onSpawnCircleUpdate((spawnCircle) =>
+    State.set("spawnCircle", spawnCircle),
+  );
+  Network.onCapZoneUpdate((capZone) => State.set("capZone", capZone));
+  Network.onMapSizeUpdate((mapSize) => {
+    State.set("mapSize", mapSize);
+    if (UI.elems.spawnSizeSlider) UI.elems.spawnSizeSlider.value = mapSize;
+    if (UI.elems.spawnSizeValue) UI.elems.spawnSizeValue.innerText = mapSize;
+  });
+  Network.onChatError((errorMsg) => showToast(errorMsg, true));
+  Network.onClearChat(() => UI.clearChat());
+
+  Network.onKicked(({ reason }) => {
+    alert(`${reason}`);
+    window.location.reload();
+  });
+
+  Network.onLobbyJoinFail(({ message }) => {
+    showToast(message, true);
+  });
+
+  Network.onAdminStateUpdate((state) => {
+    UI.toggleLobbyPasswordInput(state.hasLobbyPassword);
+    AdminUI.handleStateUpdate(state);
+  });
+
+  Network.onAdminLoginSuccess((state) => {
+    showToast("Admin login successful.");
+    AdminUI.handleLoginSuccess(state);
+  });
+
+  Network.onAdminLoginFail(({ message }) => {
+    showToast(message, true);
+  });
+
+  // MODIFY onEndGame to include admin reason
+  Network.onEndGame(({ reason }) => {
+    State.set("gameActive", false);
+    if (UI.elems && UI.elems.readyCheckbox) {
+      UI.elems.readyCheckbox.checked = false;
+    }
+    UI.hide("canvasWrap");
+    UI.show("home");
+    let endReasonText = "All players left.";
+    if (reason === "voted") endReasonText = "All players voted to end.";
+    if (reason === "admin_forced")
+      endReasonText = "Drawing was ended by an admin.";
+    UI.setEndReason(endReasonText);
+    UI.show("gameEndPopup");
+    UI.showLobbyMessage("Drawing will start when 2 players are ready.");
+  });
+
+  Network.onColorsUpdated((colors) => {
+    State.set("colors", colors);
+  });
+}
+
+function watchStateChanges() {
+  let drawPending = false;
+  const scheduleDraw = () => {
+    if (drawPending) return;
+    drawPending = true;
+    requestAnimationFrame(() => {
+      Canvas.draw();
+      drawPending = false;
+    });
+  };
+
+  State.onChange((key) => {
+    const visualKeys = [
+      "objects",
+      "drawingShape",
+      "draggingPreview",
+      "capZone",
+      "spawnCircle",
+      "selectedObjectIds",
+      "hideUsernames",
+      "selectionBox",
+      "colors",
+      "simulationPreview", // <-- ADD THIS
+      "generatedPath", // <--- CRITICAL: Adds real-time path drawing support
+      "isDrawingPath",
+      "zoneIndicator", // <--- Adds support for cursor changes during drawing
+      "cameraMode", // <-- ADD THIS
+      "cameraOffset", // <-- ADD THIS
+      "cameraZoom",
+    ];
+    if (visualKeys.includes(key)) scheduleDraw();
+
+    switch (key) {
+      case "selectedObjectIds":
+        const selectedIds = State.get(key);
+        const selectedObjects = State.get("objects").filter((o) =>
+          selectedIds.includes(o.id),
+        );
+        UI.setObjectEditorVisible(selectedObjects);
+        break;
+      case "mapSize":
+        const spawn = State.get("spawnCircle");
+        if (spawn)
+          State.set("spawnCircle", {
+            ...spawn,
+            diameter: getSpawnDiameter(State.get(key)),
+          });
+        break;
+      case "colors":
+        UI.updateColorIndicators(State.get(key));
+        break;
+    }
+  });
+}
+
+function initializeGameView(payload = {}) {
+  const myId = State.get("socketId");
+  const isParticipant = (payload.players || []).some((p) => p.id === myId);
+
+  if (Array.isArray(payload.players) && !isParticipant) {
+    return;
+  }
+
+  UI.clearChat();
+  State.set("hideUsernames", false);
+  if (UI.elems.hideUsernamesCheckbox)
+    UI.elems.hideUsernamesCheckbox.checked = false;
+  if (UI.elems.voteCheckbox) UI.elems.voteCheckbox.checked = false;
+
+  State.set("gameActive", true);
+  State.set("objects", payload.objects || []);
+  State.set("players", payload.players || []);
+  State.set("capZone", payload.capZone);
+  State.set("spawnCircle", payload.spawnCircle);
+  State.set("mapSize", payload.mapSize ?? 9);
+  State.set("colors", payload.colors);
+
+  State.set("useShades", !!payload.useShades);
+  if (UI.elems.cbUseShades) {
+    UI.elems.cbUseShades.checked = !!payload.useShades;
+  }
+
+  UI.hide("home");
+  UI.show("canvasWrap");
+  UI.updatePlayers(payload.players || []);
+}
+
+document.addEventListener("DOMContentLoaded", main);
