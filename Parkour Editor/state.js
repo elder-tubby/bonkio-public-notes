@@ -46,6 +46,7 @@ class State {
 
       // Settings
       mapSize: 9,
+	  hideZoneShapes: true,
       generatedPath: null,
       isDrawingPath: false, // <-- ADD THIS
       simulationPreview: null, // <-- ADD THIS

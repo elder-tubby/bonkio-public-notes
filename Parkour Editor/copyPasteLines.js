@@ -386,11 +386,15 @@ export function copyLineInfo() {
   const spawnExternal = gameToExternal(spawn.x, spawn.y);
   const mapSize = State.get("mapSize");
 
+const hideZoneShapes = State.get("hideZoneShapes") ?? true;
+
   // Reorder: Push zones to the very back (before the background line)
   const exportZones = exportedObjects.filter((o) => o.isZone);
   const exportBg = exportedObjects.filter((o) => o.isBgLine);
   const exportNormals = exportedObjects.filter((o) => !o.isZone && !o.isBgLine);
-  const reorderedExport = [...exportZones, ...exportBg, ...exportNormals];
+  const reorderedExport = hideZoneShapes
+    ? [...exportZones, ...exportBg, ...exportNormals]
+    : [...exportBg, ...exportNormals, ...exportZones];
 
   const out = {
     version: 1,

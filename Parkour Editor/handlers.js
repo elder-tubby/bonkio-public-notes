@@ -897,6 +897,12 @@ function handleKeyDown(e) {
   }
   // General hotkeys
   switch (key) {
+	case "escape":
+      if ((State.get("selectedObjectIds") || []).length > 0) {
+        e.preventDefault();
+        State.clearSelectedObjects();
+      }
+      return;  
     case "a":
       if (e.ctrlKey) {
         e.preventDefault();
@@ -2413,6 +2419,85 @@ export function bindUIEvents() {
     }
   });
 
+// --- ADD GRID OF SHAPES ---
+  const handleAddGrid = () => {
+    const rowsInput = document.getElementById("gridRowsInput");
+    const colsInput = document.getElementById("gridColsInput");
+
+    const rows = parseInt(rowsInput?.value, 10);
+    const cols = parseInt(colsInput?.value, 10);
+
+    if (!Number.isFinite(rows) || rows < 1 || !Number.isFinite(cols) || cols < 1) {
+      showToast("Please enter valid positive numbers for rows and columns.", true);
+      return;
+    }
+
+    const canvas = UI.elems.canvas || document.getElementById("canvas");
+    const cw = canvas ? canvas.width : 730;
+    const ch = canvas ? canvas.height : 500;
+
+    const cellWidth = cw / cols;
+    const cellHeight = ch / rows;
+    const squareSize = 7;
+    const halfSize = squareSize / 2;
+
+    const gridObjects = [];
+    for (let r = 0; r < rows; r++) {
+      const cy = (r + 0.5) * cellHeight;
+      for (let c = 0; c < cols; c++) {
+        const cx = (c + 0.5) * cellWidth;
+        gridObjects.push({
+          type: "poly",
+          c: { x: cx, y: cy },
+          v: [
+            { x: -halfSize, y: -halfSize },
+            { x: halfSize, y: -halfSize },
+            { x: halfSize, y: halfSize },
+            { x: -halfSize, y: halfSize },
+          ],
+          a: 0,
+          scale: 1,
+          polyType: "none",
+          isZone: false,
+        });
+      }
+    }
+
+    if (window.saveMapSnapshot) window.saveMapSnapshot();
+
+    const existingIds = new Set((State.get("objects") || []).map((o) => o.id));
+    Network.createObjectsBatch({
+      objects: gridObjects,
+      isAutoGeneration: false,
+    });
+
+    const selectCreatedGrid = () => {
+      const currentObjects = State.get("objects") || [];
+      const newIds = currentObjects
+        .filter((o) => !existingIds.has(o.id))
+        .map((o) => o.id);
+      if (newIds.length > 0) {
+        State.set("selectedObjectIds", newIds);
+      }
+    };
+
+    selectCreatedGrid();
+    setTimeout(selectCreatedGrid, 50);
+
+    showToast(`Added ${gridObjects.length} shapes (${rows}×${cols} grid).`);
+    if (window.toggleMoreOptions) window.toggleMoreOptions();
+  };
+
+  safeAddEvent(document.getElementById("btnAddGrid"), "click", handleAddGrid);
+  ["gridRowsInput", "gridColsInput"].forEach((id) => {
+    safeAddEvent(document.getElementById(id), "keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        handleAddGrid();
+      }
+    });
+  });
+
   // --- SPLIT SHAPE ENGINE ---
   safeAddEvent(document.getElementById("btnSplitShape"), "click", () => {
     window.toggleMoreOptions();
@@ -3181,6 +3266,13 @@ export function bindUIEvents() {
     const zone = State.get("zoneIndicator") || { x: 300, y: 150 };
     State.set("zoneIndicator", { ...zone, show: ev.target.checked });
   });
+  
+  if (e.cbHideZoneShapes) {
+    e.cbHideZoneShapes.checked = State.get("hideZoneShapes") ?? true;
+    safeAddEvent(e.cbHideZoneShapes, "change", (ev) => {
+      State.set("hideZoneShapes", ev.target.checked);
+    });
+  }
 
   // --- CAMERA NAVIGATION MODE ---
   safeAddEvent(e.btnCameraMode, "click", () => {

@@ -57,6 +57,12 @@ class UI {
                     <input type="checkbox" id="cbShowZone" style="cursor: pointer;">
                     <label for="cbShowZone" style="font-size: 13px; color: #ccc; cursor: pointer; user-select: none;">Show zone indicator</label>
                 </div>
+				
+				<div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="cbHideZoneShapes" checked style="cursor: pointer;">
+                    <label for="cbHideZoneShapes" style="font-size: 13px; color: #ccc; cursor: pointer; user-select: none;">Hide zone shapes</label>
+                </div>
+
 
                 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
                   <input type="checkbox" id="cbUseShades" style="cursor: pointer;">
@@ -140,6 +146,21 @@ class UI {
                         <button id="btnBulkConvert" class="btn" style="font-size: 11px; padding: 6px;">Convert</button>
                     </div>
                 </div>
+				
+				<div style="margin-top: 15px; border-top: 1px solid #333; padding-top: 15px;">
+    <h4 style="margin: 0 0 10px 0; font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 1px;">Add Grid of Shapes</h4>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label for="gridRowsInput" style="font-size: 11px; color: #ccc;">Rows</label>
+            <input type="number" id="gridRowsInput" min="1" value="10" style="font-size: 12px; padding: 5px; background: #222; color: #fff; border: 1px solid #444; border-radius: 3px; width: 100%; box-sizing: border-box;">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label for="gridColsInput" style="font-size: 11px; color: #ccc;">Columns</label>
+            <input type="number" id="gridColsInput" min="1" value="10" style="font-size: 12px; padding: 5px; background: #222; color: #fff; border: 1px solid #444; border-radius: 3px; width: 100%; box-sizing: border-box;">
+        </div>
+    </div>
+    <button id="btnAddGrid" class="btn" style="width: 100%; font-size: 11px; padding: 6px;">Add Grid of Shapes</button>
+</div>
 
       <div style="margin-top: 20px; border-top: 1px solid #333; padding-top: 15px;">
                     <h4 style="margin: 0 0 10px 0; font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 1px;">Generate Death Tunnel</h4>
@@ -623,6 +644,7 @@ class UI {
       "tunnelPaddingVal",
       "btnGenerateTunnel",
       "cbShowZone",
+	  "cbHideZoneShapes",
       "cbUseShades",
       "cbShadeDeath",
       "cbShadeBouncy",
@@ -636,6 +658,10 @@ class UI {
       "btnColor-background",
       "btnCameraMode",
       "btnResetCamera",
+	  "gridRowsInput",
+"gridColsInput",
+"btnAddGrid",
+
     ];
 
     dynamicIds.forEach((id) => {
