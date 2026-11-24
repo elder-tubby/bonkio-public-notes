@@ -361,6 +361,10 @@ const addPkrDiv = () => {
             <input type="checkbox" id="pkr_autoStart_check" />
             <label for="pkr_autoStart_check" class="bonkhud-settings-label" style="margin-left: 5px;">Auto Start</label>
         </div>
+        <div style="display: flex; align-items: center; margin-top: 5px;">
+            <input type="checkbox" id="pkr_minZoneTimer_check" style="cursor: pointer;" />
+            <label for="pkr_minZoneTimer_check" class="bonkhud-settings-label" style="margin-left: 5px; cursor: pointer;">Min Zone Timer (0.01)</label>
+        </div>
     </div>
 
 
@@ -700,21 +704,24 @@ async function createAndSetMap(inputText) {
 
         map.physics.bro = map.physics.bodies.map((_, i) => i);
 
+        const useMinZoneTimer = document.getElementById("pkr_minZoneTimer_check")?.checked ?? false;
+        const zoneTimer = useMinZoneTimer ? 0.01 : 999;
+
         // Capzones
-        allShapes.forEach((line, index) => { // <-- Added 'index' here
+        allShapes.forEach((line, index) => {
             if (line.isZone) {
                 map.capZones.push({
                     n: line.id + '. cp_zone',
                     ty: 1,
-                    l: 999, // Zones don't trigger game over
-                    i: index, // <-- CRITICAL FIX: Use 'index' instead of 'line.id'
+                    l: zoneTimer,
+                    i: index,
                 });
             } else if (line.isCapzone) {
                 map.capZones.push({
                     n: line.id + '. cp_real',
                     ty: 1,
                     l: 0.01,
-                    i: index, // <-- CRITICAL FIX
+                    i: index,
                 });
             }
 
@@ -723,7 +730,7 @@ async function createAndSetMap(inputText) {
                     n: line.id + '. NoJump',
                     ty: 2,
                     l: 10,
-                    i: index, // <-- CRITICAL FIX
+                    i: index,
                 });
             }
         });
